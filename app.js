@@ -35,6 +35,7 @@ let state = {
   selectedTaskIds: new Set(),
   expandedCompletedProjectIds: new Set(),
   selectedMonth: new Date(),
+  selectedCalendarDate: todayISO(),
   workspace: loadWorkspace(),
 };
 
@@ -696,6 +697,7 @@ function renderCalendar() {
   const base = state.selectedMonth;
   const year = base.getFullYear();
   const month = base.getMonth();
+  const displayedMonth = monthKey(base);
   const first = new Date(year, month, 1);
   const last = new Date(year, month + 1, 0);
   const startOffset = first.getDay();
@@ -703,9 +705,19 @@ function renderCalendar() {
   for (let i = 0; i < startOffset; i += 1) cells.push(null);
   for (let day = 1; day <= last.getDate(); day += 1) cells.push(new Date(year, month, day));
   const days = ["日", "一", "二", "三", "四", "五", "六"];
-  const monthTasks = state.workspace.tasks.filter((task) => task.date && task.date.startsWith(monthKey(base))).sort(sortTasks);
+  const monthTasks = state.workspace.tasks.filter((task) => task.date && task.date.startsWith(displayedMonth)).sort(sortTasks);
+  if (!state.selectedCalendarDate?.startsWith(displayedMonth)) {
+    state.selectedCalendarDate = dateISO(first);
+  }
+  const selectedDate = state.selectedCalendarDate;
+  const selectedTasks = state.workspace.tasks.filter((task) => task.date === selectedDate).sort(sortTasks);
+  const selectedDateLabel = new Intl.DateTimeFormat("zh-Hant", {
+    month: "long",
+    day: "numeric",
+    weekday: "long",
+  }).format(new Date(`${selectedDate}T00:00:00`));
   return `
-    <section class="card">
+    <section class="card calendar-card">
       <div class="card-header">
         <div><h3>${year} 年 ${month + 1} 月</h3><p class="muted">${monthTasks.length} 件工作</p></div>
         <div class="toolbar">
@@ -719,10 +731,16 @@ function renderCalendar() {
           ${days.map((day) => `<div class="day-name">${day}</div>`).join("")}
           ${cells.map((date) => renderDayCell(date)).join("")}
         </div>
-        <div class="list">
-          <h4>本月工作</h4>
-          ${taskList(monthTasks.slice(0, 18), "本月沒有排程工作。")}
-        </div>
+        <aside class="calendar-day-panel" aria-live="polite">
+          <div class="calendar-day-header">
+            <div>
+              <p class="calendar-day-kicker">當日行事曆工作</p>
+              <h4>${escapeHTML(selectedDateLabel)}</h4>
+            </div>
+            ${pill(`${selectedTasks.length} 件`, selectedTasks.length ? "green" : "gray")}
+          </div>
+          <div class="list">${taskList(selectedTasks, "這一天沒有排程工作。")}</div>
+        </aside>
       </div>
     </section>
   `;
@@ -732,12 +750,13 @@ function renderDayCell(date) {
   if (!date) return `<div class="day-cell empty"></div>`;
   const iso = dateISO(date);
   const tasks = state.workspace.tasks.filter((task) => task.date === iso).sort(sortTasks);
+  const selected = iso === state.selectedCalendarDate;
   return `
-    <div class="day-cell ${iso === todayISO() ? "today" : ""}">
+    <button type="button" class="day-cell ${iso === todayISO() ? "today" : ""} ${selected ? "selected" : ""} ${tasks.length ? "has-tasks" : ""}" data-calendar-date="${iso}" aria-label="${date.getMonth() + 1} 月 ${date.getDate()} 日，${tasks.length} 件工作" aria-pressed="${selected}">
       <div class="day-number">${date.getDate()}</div>
       ${tasks.slice(0, 3).map((task) => `<span class="day-dot">${escapeHTML(task.title || "未命名工作")}</span>`).join("")}
       ${tasks.length > 3 ? `<span class="day-dot">另有 ${tasks.length - 3} 件</span>` : ""}
-    </div>
+    </button>
   `;
 }
 
@@ -897,6 +916,14 @@ function bindContentEvents() {
       state.selectedMonth = offset === 0
         ? new Date(now.getFullYear(), now.getMonth(), 1)
         : new Date(state.selectedMonth.getFullYear(), state.selectedMonth.getMonth() + offset, 1);
+      state.selectedCalendarDate = offset === 0 ? todayISO() : dateISO(state.selectedMonth);
+      render();
+    });
+  });
+
+  document.querySelectorAll("[data-calendar-date]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.selectedCalendarDate = button.dataset.calendarDate;
       render();
     });
   });
