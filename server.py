@@ -213,6 +213,11 @@ def login_page() -> Any:
 
 @app.get("/health")
 def health() -> Any:
+    return jsonify({"status": "ok"})
+
+
+@app.get("/ready")
+def ready() -> Any:
     try:
         with database() as connection:
             connection.execute("SELECT 1").fetchone()

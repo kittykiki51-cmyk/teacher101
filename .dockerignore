@@ -1,0 +1,9 @@
+.git
+.gitignore
+.env
+.venv-cloud
+__pycache__
+*.pyc
+backups
+cloud-data
+initial-data.js
