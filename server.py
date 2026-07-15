@@ -18,7 +18,11 @@ from flask import Flask, abort, jsonify, redirect, request, send_from_directory,
 
 
 BASE_DIR = Path(__file__).resolve().parent
-DATA_DIR = Path(os.environ.get("DATA_DIR", BASE_DIR / "cloud-data")).expanduser()
+DATA_DIR = Path(
+    os.environ.get("DATA_DIR")
+    or os.environ.get("RAILWAY_VOLUME_MOUNT_PATH")
+    or BASE_DIR / "cloud-data"
+).expanduser()
 DATABASE_PATH = DATA_DIR / "teacher_operations.sqlite3"
 APP_PASSWORD = os.environ.get("APP_PASSWORD", "")
 SECRET_KEY = os.environ.get("SECRET_KEY", "")
@@ -205,6 +209,16 @@ def login_page() -> Any:
     if authenticated():
         return redirect(url_for("home"))
     return send_from_directory(BASE_DIR, "login.html")
+
+
+@app.get("/health")
+def health() -> Any:
+    try:
+        with database() as connection:
+            connection.execute("SELECT 1").fetchone()
+        return jsonify({"status": "ok"})
+    except sqlite3.Error:
+        return jsonify({"status": "error"}), 503
 
 
 @app.post("/api/login")

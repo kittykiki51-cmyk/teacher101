@@ -52,6 +52,15 @@
 - 永久磁碟掛載至 `DATA_DIR`
 - 單一 Gunicorn worker，避免重複執行通知排程
 
+## Railway
+
+儲存庫已包含 `railway.json`，會自動套用 Railpack、Gunicorn、健康檢查與失敗重啟設定。Railway Volume 掛載後，程式會自動使用平台提供的 `RAILWAY_VOLUME_MOUNT_PATH`，不需要另外設定 `DATA_DIR`。
+
+部署時至少要設定兩個秘密環境變數：
+
+- `APP_PASSWORD`：網站登入密碼
+- `SECRET_KEY`：至少 32 字元的隨機字串
+
 啟動命令已寫在 `Procfile`：
 
 ```text
