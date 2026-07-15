@@ -1,0 +1,10 @@
+{
+  "name": "老師專案管理",
+  "short_name": "老師專案",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f6f4ef",
+  "theme_color": "#2f4a5f",
+  "lang": "zh-Hant"
+}

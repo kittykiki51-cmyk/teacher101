@@ -1,0 +1,8 @@
+.env
+cloud-data/
+__pycache__/
+*.pyc
+.venv-cloud/
+backups/
+initial-data.js
+.DS_Store

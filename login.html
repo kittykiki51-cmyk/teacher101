@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#2f4a5f">
+  <title>登入｜老師專案管理</title>
+  <link rel="stylesheet" href="login.css">
+</head>
+<body>
+  <main class="login-page">
+    <section class="login-panel" aria-labelledby="loginTitle">
+      <div class="login-heading">
+        <p>課程上架營運工作台</p>
+        <h1 id="loginTitle">老師專案管理</h1>
+      </div>
+      <form id="loginForm">
+        <label for="password">登入密碼</label>
+        <div class="password-field">
+          <input id="password" name="password" type="password" autocomplete="current-password" required autofocus>
+          <button id="togglePassword" type="button" aria-label="顯示密碼" title="顯示密碼">顯示</button>
+        </div>
+        <p class="error-message" id="errorMessage" role="alert" aria-live="polite"></p>
+        <button class="login-button" id="loginButton" type="submit">登入</button>
+      </form>
+      <p class="device-note">登入狀態會安全保留在這台裝置。</p>
+    </section>
+  </main>
+  <script src="login.js"></script>
+</body>
+</html>

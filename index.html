@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#2f4a5f">
+  <title>老師專案管理</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="主選單">
+      <div class="brand">
+        <div>
+          <h1>老師專案管理</h1>
+          <p>課程上架營運工作台</p>
+        </div>
+      </div>
+      <nav class="nav" id="desktopNav"></nav>
+      <div class="sidebar-foot">
+        <button class="ghost-button" id="importButton">匯入資料</button>
+        <button class="ghost-button" id="exportButton">匯出備份</button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow" id="todayLabel"></p>
+          <h2 id="pageTitle">營運首頁</h2>
+        </div>
+        <div class="topbar-actions">
+          <button class="ghost-button" id="refreshButton">重新整理</button>
+          <span class="save-indicator" id="saveIndicator">已自動保存</span>
+          <button class="ghost-button" id="logoutButton" hidden>登出</button>
+        </div>
+      </header>
+
+      <section class="content" id="content"></section>
+    </main>
+  </div>
+
+  <nav class="bottom-nav" id="mobileNav" aria-label="手機主選單"></nav>
+
+  <input id="fileInput" type="file" accept=".json,.zip" hidden>
+  <div class="modal-layer" id="modalLayer" hidden></div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
