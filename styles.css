@@ -1001,14 +1001,21 @@ button:disabled {
 }
 
 .calendar-layout {
-  grid-template-columns: 1fr 380px;
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 380px);
   align-items: start;
 }
 
 .calendar-grid {
+  min-width: 0;
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 7px;
+}
+
+.calendar-layout > .list {
+  min-width: 0;
 }
 
 .day-name,
