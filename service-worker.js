@@ -1,4 +1,4 @@
-const CACHE_NAME = "teacher-operations-v3";
+const CACHE_NAME = "teacher-operations-v4";
 const APP_SHELL = ["/", "/styles.css", "/app.js", "/manifest.json"];
 
 self.addEventListener("install", (event) => {

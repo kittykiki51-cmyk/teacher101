@@ -64,6 +64,10 @@ assert(messageDetail.includes('project-board-card project-mobile-panel active'),
 const settings = harness.renderSettings();
 assert(settings.includes("mobile-account-panel"), "Mobile settings should expose sync and account actions");
 assert(source.includes('name="task_type"'), "Task forms should preserve phone task type");
+assert(source.includes("window.visualViewport"), "Mobile dialogs should follow the visible viewport when the keyboard opens");
+assert(source.includes('type="month" name="target_month"'), "Project month should use the device month picker");
+assert(source.includes('type="date" name="target_date"'), "Project date should use the device date picker");
+assert(source.includes('name="teacher" required') && source.includes('autocomplete="off"'), "Teacher name should not request contact autofill");
 
 const styles = read("../styles.css");
 assert(styles.includes(".project-mobile-tabs"), "Mobile project tab styles should exist");
@@ -74,6 +78,6 @@ const index = read("../index.html");
 assert(index.includes("mobile-button-label"), "Mobile top bar should use a compact add label");
 
 const worker = read("../service-worker.js");
-assert(worker.includes('teacher-operations-v3'), "PWA cache should be refreshed for the mobile redesign");
+assert(worker.includes('teacher-operations-v4'), "PWA cache should be refreshed for keyboard-adaptive dialogs");
 
 console.log("mobile UX render tests: passed");

@@ -55,6 +55,7 @@ let cloudCsrfToken = "";
 let cloudSaveTimer = null;
 let cloudSaveInFlight = false;
 let calendarSwipeUntil = 0;
+let modalViewportCleanup = null;
 
 const $ = (selector) => document.querySelector(selector);
 
@@ -1571,23 +1572,23 @@ function openProjectDialog(project = null) {
         </div>
         <button class="icon-button" data-close-modal>×</button>
       </div>
-      <form class="form-grid" id="projectForm">
+      <form class="form-grid" id="projectForm" autocomplete="off">
         <label>
           <span>老師名稱</span>
-          <input class="search-input" name="teacher" required value="${escapeHTML(project?.teacher || "")}" placeholder="例如：林老師">
+          <input class="search-input" name="teacher" required value="${escapeHTML(project?.teacher || "")}" placeholder="例如：林老師" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
         </label>
         <label>
           <span>課程名稱</span>
-          <input class="search-input" name="course" required value="${escapeHTML(project?.course || "")}" placeholder="例如：AI 角色影音創作">
+          <input class="search-input" name="course" required value="${escapeHTML(project?.course || "")}" placeholder="例如：AI 角色影音創作" autocomplete="off" autocorrect="off" spellcheck="false">
         </label>
         <div class="two-col">
           <label>
             <span>目標月份</span>
-            <input class="search-input" name="target_month" value="${escapeHTML(project?.target_month || currentMonth)}" pattern="\\d{4}-\\d{2}" required>
+            <input class="search-input" type="month" name="target_month" value="${escapeHTML(project?.target_month || currentMonth)}" required>
           </label>
           <label>
             <span>預計上架日</span>
-            <input class="search-input" name="target_date" value="${escapeHTML(project?.target_date || "")}" pattern="\\d{4}-\\d{2}-\\d{2}" required placeholder="YYYY-MM-DD">
+            <input class="search-input" type="date" name="target_date" value="${escapeHTML(project?.target_date || "")}" required>
           </label>
         </div>
         <div class="three-col">
@@ -1608,8 +1609,8 @@ function openProjectDialog(project = null) {
           <span>目前階段</span>
           <select class="select" name="stage">${[...STAGE_NAMES, "已上架", "已完成", "已放棄"].map((value) => `<option ${(project?.status === "已完成" ? "已完成" : project?.status === "已上架" ? "已上架" : project?.status === "已放棄" ? "已放棄" : project?.current_stage || STAGE_NAMES[0]) === value ? "selected" : ""}>${value}</option>`).join("")}</select>
         </label>
-        <label><span>雲端資料夾</span><input class="search-input" name="cloud" value="${escapeHTML(project?.links?.["雲端資料夾"] || "")}" placeholder="https://..."></label>
-        <label><span>課程頁</span><input class="search-input" name="course_link" value="${escapeHTML(project?.links?.["課程頁"] || "")}" placeholder="https://..."></label>
+        <label><span>雲端資料夾</span><input class="search-input" type="url" inputmode="url" name="cloud" value="${escapeHTML(project?.links?.["雲端資料夾"] || "")}" placeholder="https://..." autocomplete="off"></label>
+        <label><span>課程頁</span><input class="search-input" type="url" inputmode="url" name="course_link" value="${escapeHTML(project?.links?.["課程頁"] || "")}" placeholder="https://..." autocomplete="off"></label>
         ${project ? "" : `<label><span>建立時套用檢查清單</span><select class="select" name="template"><option value="">不套用</option>${(state.workspace.checklist_templates || []).map((item) => `<option value="${escapeHTML(item.id)}">${escapeHTML(item.name || "未命名範本")}</option>`).join("")}</select></label>`}
         <input type="hidden" name="project_id" value="${escapeHTML(project?.id || "")}">
         <div class="modal-actions split-actions">
@@ -1629,13 +1630,44 @@ function openProjectDialog(project = null) {
   $("#projectForm").addEventListener("submit", saveProjectFromForm);
   const deleteButton = layer.querySelector("[data-project-delete]");
   if (deleteButton) deleteButton.addEventListener("click", () => deleteProject(deleteButton.dataset.projectDelete));
-  layer.querySelector("input[name='teacher']").focus();
+  setupModalViewport(layer);
+  if (!window.matchMedia("(max-width: 760px)").matches) layer.querySelector("input[name='teacher']").focus({ preventScroll: true });
 }
 
 function closeModal() {
   const layer = $("#modalLayer");
+  if (modalViewportCleanup) modalViewportCleanup();
+  modalViewportCleanup = null;
   layer.hidden = true;
   layer.innerHTML = "";
+}
+
+function setupModalViewport(layer) {
+  if (modalViewportCleanup) modalViewportCleanup();
+  const viewport = window.visualViewport;
+  const updateViewport = () => {
+    const height = Math.round(viewport?.height || window.innerHeight);
+    const offsetTop = Math.round(viewport?.offsetTop || 0);
+    layer.style.setProperty("--modal-viewport-height", `${height}px`);
+    layer.style.setProperty("--modal-viewport-top", `${offsetTop}px`);
+    layer.classList.toggle("keyboard-open", Boolean(viewport && height < window.innerHeight - 120));
+  };
+  const keepFocusedFieldVisible = (event) => {
+    if (!event.target.matches("input, select, textarea")) return;
+    window.setTimeout(() => event.target.scrollIntoView({ block: "center", behavior: "smooth" }), 180);
+  };
+  viewport?.addEventListener("resize", updateViewport);
+  viewport?.addEventListener("scroll", updateViewport);
+  layer.addEventListener("focusin", keepFocusedFieldVisible);
+  updateViewport();
+  modalViewportCleanup = () => {
+    viewport?.removeEventListener("resize", updateViewport);
+    viewport?.removeEventListener("scroll", updateViewport);
+    layer.removeEventListener("focusin", keepFocusedFieldVisible);
+    layer.classList.remove("keyboard-open");
+    layer.style.removeProperty("--modal-viewport-height");
+    layer.style.removeProperty("--modal-viewport-top");
+  };
 }
 
 function saveProjectFromForm(event) {
@@ -1740,7 +1772,7 @@ function openTaskDialog(task = null, projectId = "") {
   layer.hidden = false;
   layer.innerHTML = `<div class="modal-card compact-modal" role="dialog" aria-modal="true">
     <div class="modal-header"><h3>${task?.id ? (isPhoneTask ? "編輯電話聯繫" : "編輯工作") : (isPhoneTask ? "新增電話聯繫" : "新增工作排程")}</h3><button class="icon-button" data-close-modal aria-label="關閉">×</button></div>
-    <form class="form-grid" id="taskForm">
+    <form class="form-grid" id="taskForm" autocomplete="off">
       <label><span>工作內容</span><input class="search-input" name="title" required value="${escapeHTML(task?.title || "")}"></label>
       <div class="two-col"><label><span>日期</span><input class="search-input" type="date" name="date" value="${escapeHTML(task?.date || todayISO())}" required></label><label><span>時間</span><input class="search-input" type="time" name="time" value="${escapeHTML(task?.time || "")}"></label></div>
       <div class="two-col">
@@ -1756,6 +1788,7 @@ function openTaskDialog(task = null, projectId = "") {
   layer.querySelectorAll("[data-close-modal]").forEach((button) => button.addEventListener("click", closeModal));
   layer.querySelector("[data-task-delete]")?.addEventListener("click", (event) => deleteTask(event.currentTarget.dataset.taskDelete));
   $("#taskForm").addEventListener("submit", saveTaskFromForm);
+  setupModalViewport(layer);
 }
 
 function saveTaskFromForm(event) {
