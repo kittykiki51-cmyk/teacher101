@@ -38,6 +38,7 @@ let state = {
   calendarQuery: "",
   calendarStatusFilter: "全部",
   calendarView: "month",
+  calendarMobilePanelOpen: false,
   globalQuery: "",
   pageBeforeSearch: "dashboard",
   selectedProjectId: "",
@@ -52,6 +53,7 @@ let cloudRevision = 0;
 let cloudCsrfToken = "";
 let cloudSaveTimer = null;
 let cloudSaveInFlight = false;
+let calendarSwipeUntil = 0;
 
 const $ = (selector) => document.querySelector(selector);
 
@@ -848,8 +850,81 @@ function tasksOnDate(iso) {
   return state.workspace.tasks.filter((task) => task.date === iso && calendarTaskMatches(task)).sort(sortTasks);
 }
 
+const CALENDAR_PROJECT_COLORS = [
+  { color: "#5166e6", soft: "#eef0ff", border: "#cdd4ff" },
+  { color: "#16847a", soft: "#e8f6f3", border: "#b7e1da" },
+  { color: "#a66321", soft: "#fff4e5", border: "#eed1a6" },
+  { color: "#b34f68", soft: "#fceef2", border: "#edc4cf" },
+  { color: "#6f5bb5", soft: "#f1eefb", border: "#d5ccef" },
+  { color: "#3d7896", soft: "#eaf5fa", border: "#bedce9" },
+  { color: "#5f7d3d", soft: "#eff6e9", border: "#cde0bd" },
+];
+
+function calendarColor(task) {
+  const project = projectById(task.project_id);
+  if (!project) return CALENDAR_PROJECT_COLORS[0];
+  const key = `${project.id || ""}${project.course || ""}`;
+  const hash = [...key].reduce((total, character) => ((total * 31) + character.charCodeAt(0)) >>> 0, 0);
+  return CALENDAR_PROJECT_COLORS[1 + (hash % (CALENDAR_PROJECT_COLORS.length - 1))];
+}
+
+function calendarColorStyle(task) {
+  const color = calendarColor(task);
+  return `--event-color:${color.color};--event-soft:${color.soft};--event-border:${color.border}`;
+}
+
 function calendarEvent(task, extraClass = "") {
-  return `<button type="button" draggable="true" class="calendar-event ${extraClass} ${task.status === STATUS_COMPLETED ? "completed" : ""}" data-calendar-task="${escapeHTML(task.id)}" title="拖曳以調整日期或時間"><b>${escapeHTML(task.time || "全天")}</b>${escapeHTML(task.title || "未命名工作")}</button>`;
+  return `<button type="button" draggable="true" class="calendar-event ${extraClass} ${task.status === STATUS_COMPLETED ? "completed" : ""}" style="${calendarColorStyle(task)}" data-calendar-task="${escapeHTML(task.id)}" title="拖曳以調整日期或時間"><b>${escapeHTML(task.time || "全天")}</b><span>${escapeHTML(task.title || "未命名工作")}</span></button>`;
+}
+
+function calendarVisibleTasks(anchor) {
+  const start = new Date(anchor);
+  const end = new Date(anchor);
+  if (state.calendarView === "month") {
+    start.setDate(1);
+    end.setMonth(end.getMonth() + 1, 0);
+  } else if (state.calendarView === "week") {
+    const first = weekStart(anchor);
+    start.setTime(first.getTime());
+    end.setTime(first.getTime());
+    end.setDate(end.getDate() + 6);
+  }
+  const from = dateISO(start);
+  const to = dateISO(end);
+  return state.workspace.tasks.filter((task) => task.date >= from && task.date <= to && calendarTaskMatches(task));
+}
+
+function renderCalendarLegend(anchor) {
+  const tasks = calendarVisibleTasks(anchor);
+  const entries = new Map();
+  tasks.forEach((task) => {
+    const project = projectById(task.project_id);
+    const key = project?.id || "personal";
+    if (!entries.has(key)) entries.set(key, { task, label: project?.course || "我的工作" });
+  });
+  if (!entries.size) return "";
+  return `<div class="calendar-legend" aria-label="行事曆分類">${[...entries.values()].map(({ task, label }) => `<span style="${calendarColorStyle(task)}"><i></i>${escapeHTML(label)}</span>`).join("")}</div>`;
+}
+
+function renderCalendarPanelTask(task) {
+  const project = projectById(task.project_id);
+  const completed = task.status === STATUS_COMPLETED;
+  return `<article class="calendar-panel-task ${completed ? "completed" : ""}" style="${calendarColorStyle(task)}">
+    <div class="calendar-panel-task-main">
+      <span class="calendar-task-color" aria-hidden="true"></span>
+      <div><p class="calendar-panel-title">${escapeHTML(task.title || "未命名工作")}</p><p class="calendar-panel-meta">${escapeHTML(task.time || "全天")} · ${escapeHTML(project?.course || "我的工作")}${task.reminder_minutes !== undefined && task.reminder_minutes !== "" ? ` · ${escapeHTML(reminderLabel(task.reminder_minutes))}` : ""}</p>${task.note ? `<p class="calendar-panel-note">${escapeHTML(task.note)}</p>` : ""}</div>
+    </div>
+    <div class="calendar-panel-actions">
+      ${completed ? pill("已完成", "green") : `<button class="small-button" data-complete="${escapeHTML(task.id)}">完成</button><button class="small-button" data-postpone="${escapeHTML(task.id)}">延後一天</button>`}
+      <button class="small-button" data-task-edit="${escapeHTML(task.id)}">編輯</button>
+      <button class="calendar-delete-button" data-calendar-delete="${escapeHTML(task.id)}">刪除</button>
+    </div>
+  </article>`;
+}
+
+function renderCalendarPanel(tasks) {
+  if (!tasks.length) return `<div class="calendar-panel-empty"><strong>這一天沒有工作</strong><p>雙擊日期或按新增工作，就能安排事項。</p></div>`;
+  return tasks.map(renderCalendarPanelTask).join("");
 }
 
 function renderCalendar() {
@@ -874,11 +949,13 @@ function renderCalendar() {
       <select class="select" id="calendarStatusFilter" aria-label="工作狀態篩選">${["全部", "未完成", "已完成"].map((value) => `<option ${state.calendarStatusFilter === value ? "selected" : ""}>${value}</option>`).join("")}</select>
       <button class="primary-button" data-calendar-add="${escapeHTML(selectedDate)}">新增工作</button>
     </div>
+    ${renderCalendarLegend(anchor)}
     <div class="grid calendar-layout ${state.calendarView}-view-layout">
       <div class="calendar-view-main">${state.calendarView === "month" ? renderMonthCalendar(anchor) : state.calendarView === "week" ? renderWeekCalendar(anchor) : renderDayCalendar(anchor)}</div>
-      <aside class="calendar-day-panel" aria-live="polite">
-        <div class="calendar-day-header"><div><p class="calendar-day-kicker">${selectedDate === todayISO() ? "今日工作項目" : "所選日期工作"}</p><h4>${escapeHTML(selectedDateLabel)}</h4></div><div class="toolbar">${pill(`${selectedTasks.length} 件`, selectedTasks.length ? "green" : "gray")}<button class="icon-button calendar-add-button" data-calendar-add="${escapeHTML(selectedDate)}" title="新增工作">＋</button></div></div>
-        <div class="list">${taskList(selectedTasks, "這一天沒有排程工作。")}</div>
+      <button type="button" class="calendar-sheet-backdrop ${state.calendarMobilePanelOpen ? "open" : ""}" data-calendar-panel-close aria-label="關閉所選日期工作"></button>
+      <aside class="calendar-day-panel ${state.calendarMobilePanelOpen ? "open" : ""}" aria-live="polite">
+        <div class="calendar-day-header"><div><p class="calendar-day-kicker">${selectedDate === todayISO() ? "今日工作項目" : "所選日期工作"}</p><h4>${escapeHTML(selectedDateLabel)}</h4></div><div class="toolbar">${pill(`${selectedTasks.length} 件`, selectedTasks.length ? "green" : "gray")}<button class="icon-button calendar-add-button" data-calendar-add="${escapeHTML(selectedDate)}" title="新增工作">＋</button><button class="icon-button calendar-panel-close" data-calendar-panel-close title="關閉">×</button></div></div>
+        <div class="calendar-panel-list">${renderCalendarPanel(selectedTasks)}</div>
       </aside>
     </div>
   </section>`;
@@ -917,15 +994,35 @@ function weekRangeLabel(date) {
 function renderWeekCalendar(anchor) {
   const start = weekStart(anchor);
   const dates = Array.from({ length: 7 }, (_, index) => { const date = new Date(start); date.setDate(start.getDate() + index); return date; });
-  return `<div class="week-calendar">${dates.map((date) => { const iso = dateISO(date); const tasks = tasksOnDate(iso); return `<section class="week-day ${iso === todayISO() ? "today" : ""}" data-calendar-date="${iso}" data-calendar-drop="${iso}" title="單擊選取，雙擊新增工作"><header><span>${["日", "一", "二", "三", "四", "五", "六"][date.getDay()]}</span><strong>${date.getDate()}</strong></header><div class="week-events">${tasks.map((task) => calendarEvent(task, "week-event")).join("") || `<span class="week-empty">＋</span>`}</div></section>`; }).join("")}</div>`;
+  const tasks = dates.flatMap((date) => tasksOnDate(dateISO(date)));
+  const hours = calendarHours(tasks, dates.some((date) => dateISO(date) === todayISO()));
+  return `<div class="week-calendar">
+    <div class="week-time-header"><span class="time-gutter"></span>${dates.map((date) => { const iso = dateISO(date); return `<button type="button" class="week-date-heading ${iso === todayISO() ? "today" : ""} ${iso === state.selectedCalendarDate ? "selected" : ""}" data-calendar-date="${iso}"><span>週${["日", "一", "二", "三", "四", "五", "六"][date.getDay()]}</span><strong>${date.getDate()}</strong></button>`; }).join("")}</div>
+    <div class="week-all-day"><strong>全天</strong>${dates.map((date) => { const iso = dateISO(date); const allDay = tasksOnDate(iso).filter((task) => !task.time); return `<div data-calendar-drop="${iso}" data-drop-all-day>${allDay.map((task) => calendarEvent(task, "week-event")).join("")}</div>`; }).join("")}</div>
+    <div class="time-grid-scroll" data-calendar-scroll><div class="week-hours">${hours.map((hour) => { const prefix = String(hour).padStart(2, "0"); return `<div class="week-hour-row"><time>${prefix}:00</time>${dates.map((date) => { const iso = dateISO(date); const hourTasks = tasksOnDate(iso).filter((task) => String(task.time || "").startsWith(prefix)); return `<div class="week-time-cell ${iso === state.selectedCalendarDate ? "selected" : ""}" data-calendar-drop="${iso}" data-drop-time="${prefix}:00" title="雙擊新增工作">${currentTimeMarker(iso, hour)}${hourTasks.map((task) => calendarEvent(task, "week-event")).join("")}</div>`; }).join("")}</div>`; }).join("")}</div></div>
+  </div>`;
 }
 
 function renderDayCalendar(anchor) {
   const iso = dateISO(anchor);
   const tasks = tasksOnDate(iso);
   const allDay = tasks.filter((task) => !task.time);
-  const hours = Array.from({ length: 16 }, (_, index) => index + 7);
-  return `<div class="day-agenda"><div class="all-day-row" data-calendar-drop="${iso}"><strong>全天</strong><div>${allDay.map((task) => calendarEvent(task, "agenda-event")).join("") || `<span class="muted">沒有全天工作</span>`}</div></div>${hours.map((hour) => { const prefix = String(hour).padStart(2, "0"); const hourTasks = tasks.filter((task) => String(task.time || "").startsWith(prefix)); return `<div class="hour-row" data-calendar-drop="${iso}" data-drop-time="${prefix}:00" title="雙擊新增工作"><time>${prefix}:00</time><div>${hourTasks.map((task) => calendarEvent(task, "agenda-event")).join("")}</div></div>`; }).join("")}</div>`;
+  const hours = calendarHours(tasks, iso === todayISO());
+  return `<div class="day-agenda"><div class="all-day-row" data-calendar-drop="${iso}" data-drop-all-day><strong>全天</strong><div>${allDay.map((task) => calendarEvent(task, "agenda-event")).join("") || `<span class="muted">沒有全天工作</span>`}</div></div><div class="time-grid-scroll" data-calendar-scroll>${hours.map((hour) => { const prefix = String(hour).padStart(2, "0"); const hourTasks = tasks.filter((task) => String(task.time || "").startsWith(prefix)); return `<div class="hour-row" data-calendar-drop="${iso}" data-drop-time="${prefix}:00" title="雙擊新增工作"><time>${prefix}:00</time><div>${currentTimeMarker(iso, hour)}${hourTasks.map((task) => calendarEvent(task, "agenda-event")).join("")}</div></div>`; }).join("")}</div></div>`;
+}
+
+function calendarHours(tasks, includesToday = false) {
+  const taskHours = tasks.filter((task) => task.time).map((task) => Number(String(task.time).slice(0, 2))).filter((hour) => Number.isInteger(hour));
+  if (includesToday) taskHours.push(new Date().getHours());
+  const start = Math.max(0, Math.min(7, ...taskHours));
+  const end = Math.min(23, Math.max(22, ...taskHours));
+  return Array.from({ length: end - start + 1 }, (_, index) => start + index);
+}
+
+function currentTimeMarker(iso, hour) {
+  const now = new Date();
+  if (iso !== todayISO() || hour !== now.getHours()) return "";
+  return `<span class="current-time-line" style="--minute-offset:${now.getMinutes() / 60}" aria-label="現在時間"></span>`;
 }
 
 function renderPhone() {
@@ -1003,6 +1100,59 @@ function renderSettings() {
       </div>
     </section>
   `;
+}
+
+function selectCalendarDate(iso, openMobilePanel = true) {
+  state.selectedCalendarDate = iso;
+  state.calendarMobilePanelOpen = openMobilePanel;
+  const selected = parseDate(iso);
+  if (selected) state.selectedMonth = new Date(selected.getFullYear(), selected.getMonth(), 1);
+}
+
+function navigateCalendarPeriod(offset) {
+  const now = new Date();
+  const anchor = offset === 0 ? now : (parseDate(state.selectedCalendarDate) || now);
+  if (offset !== 0) {
+    if (state.calendarView === "month") anchor.setMonth(anchor.getMonth() + offset);
+    else anchor.setDate(anchor.getDate() + offset * (state.calendarView === "week" ? 7 : 1));
+  }
+  selectCalendarDate(dateISO(anchor), false);
+  render();
+}
+
+function scrollCalendarToCurrentTime() {
+  const scrollArea = document.querySelector("[data-calendar-scroll]");
+  const marker = scrollArea?.querySelector(".current-time-line");
+  if (!scrollArea || !marker) return;
+  window.requestAnimationFrame(() => {
+    const scrollBox = scrollArea.getBoundingClientRect();
+    const markerBox = marker.getBoundingClientRect();
+    scrollArea.scrollTop += markerBox.top - scrollBox.top - (scrollArea.clientHeight * 0.32);
+  });
+}
+
+function bindCalendarSwipe() {
+  const surface = document.querySelector(".calendar-view-main");
+  if (!surface) return;
+  let startX = 0;
+  let startY = 0;
+  surface.addEventListener("touchstart", (event) => {
+    if (event.target.closest("button, input, select, textarea, [data-calendar-task]")) return;
+    const touch = event.changedTouches[0];
+    startX = touch.clientX;
+    startY = touch.clientY;
+  }, { passive: true });
+  surface.addEventListener("touchend", (event) => {
+    if (!startX && !startY) return;
+    const touch = event.changedTouches[0];
+    const deltaX = touch.clientX - startX;
+    const deltaY = touch.clientY - startY;
+    startX = 0;
+    startY = 0;
+    if (Math.abs(deltaX) < 55 || Math.abs(deltaX) <= Math.abs(deltaY) * 1.25) return;
+    calendarSwipeUntil = Date.now() + 450;
+    navigateCalendarPeriod(deltaX < 0 ? 1 : -1);
+  }, { passive: true });
 }
 
 function bindContentEvents() {
@@ -1135,18 +1285,7 @@ function bindContentEvents() {
   }));
 
   document.querySelectorAll("[data-period]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const offset = Number(button.dataset.period);
-      const now = new Date();
-      const anchor = offset === 0 ? now : (parseDate(state.selectedCalendarDate) || now);
-      if (offset !== 0) {
-        if (state.calendarView === "month") anchor.setMonth(anchor.getMonth() + offset);
-        else anchor.setDate(anchor.getDate() + offset * (state.calendarView === "week" ? 7 : 1));
-      }
-      state.selectedMonth = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
-      state.selectedCalendarDate = dateISO(anchor);
-      render();
-    });
+    button.addEventListener("click", () => navigateCalendarPeriod(Number(button.dataset.period)));
   });
 
   document.querySelectorAll("[data-calendar-task]").forEach((button) => {
@@ -1164,14 +1303,9 @@ function bindContentEvents() {
   let calendarSelectionTimer = null;
   let lastCalendarTarget = null;
   let lastCalendarClickAt = 0;
-  const selectCalendarDate = (iso) => {
-    state.selectedCalendarDate = iso;
-    const selected = parseDate(state.selectedCalendarDate);
-    if (selected) state.selectedMonth = new Date(selected.getFullYear(), selected.getMonth(), 1);
-  };
   document.querySelectorAll("[data-calendar-date]").forEach((button) => {
     button.addEventListener("click", (event) => {
-      if (event.target.closest("[data-calendar-task]")) return;
+      if (event.target.closest("[data-calendar-task]") || Date.now() < calendarSwipeUntil) return;
       const clickedAt = Date.now();
       const isDoubleActivation = lastCalendarTarget === button && clickedAt - lastCalendarClickAt <= 400;
       window.clearTimeout(calendarSelectionTimer);
@@ -1202,6 +1336,7 @@ function bindContentEvents() {
       if (!task) return;
       task.date = target.dataset.calendarDrop;
       if (target.dataset.dropTime) task.time = target.dataset.dropTime;
+      if (target.dataset.dropAllDay !== undefined) task.time = "";
       task.updated_at = new Date().toISOString();
       state.selectedCalendarDate = task.date;
       saveWorkspace(); showToast("工作時間已調整"); render();
@@ -1209,21 +1344,39 @@ function bindContentEvents() {
   });
   let lastTimeTarget = null;
   let lastTimeClickAt = 0;
+  let timeSelectionTimer = null;
   document.querySelectorAll("[data-drop-time]").forEach((target) => target.addEventListener("click", (event) => {
     if (event.target.closest("[data-calendar-task]")) return;
     const clickedAt = Date.now();
+    window.clearTimeout(timeSelectionTimer);
     if (lastTimeTarget === target && clickedAt - lastTimeClickAt <= 400) {
       lastTimeTarget = null;
       lastTimeClickAt = 0;
+      selectCalendarDate(target.dataset.calendarDrop);
+      render();
       openTaskDialog({ date: target.dataset.calendarDrop, time: target.dataset.dropTime, status: "未完成", reminder_minutes: "0" });
       return;
     }
     lastTimeTarget = target;
     lastTimeClickAt = clickedAt;
+    timeSelectionTimer = window.setTimeout(() => {
+      lastTimeTarget = null;
+      lastTimeClickAt = 0;
+      selectCalendarDate(target.dataset.calendarDrop);
+      render();
+    }, 400);
   }));
   document.querySelectorAll("[data-calendar-add]").forEach((button) => button.addEventListener("click", () => {
     openTaskDialog({ date: button.dataset.calendarAdd || state.selectedCalendarDate, status: "未完成", reminder_minutes: "0" });
   }));
+  document.querySelectorAll("[data-calendar-panel-close]").forEach((button) => button.addEventListener("click", () => {
+    state.calendarMobilePanelOpen = false;
+    render();
+  }));
+  document.querySelectorAll("[data-calendar-delete]").forEach((button) => button.addEventListener("click", () => deleteTask(button.dataset.calendarDelete)));
+
+  bindCalendarSwipe();
+  scrollCalendarToCurrentTime();
 
   document.querySelectorAll("[data-import]").forEach((button) => button.addEventListener("click", openImporter));
   document.querySelectorAll("[data-export]").forEach((button) => button.addEventListener("click", exportWorkspace));
@@ -1673,6 +1826,7 @@ function postponeTask(taskId) {
   const value = parseDate(task.date) || new Date();
   value.setDate(value.getDate() + 1);
   task.date = dateISO(value);
+  task.updated_at = new Date().toISOString();
   saveWorkspace(); showToast("已延後一天"); render();
 }
 
