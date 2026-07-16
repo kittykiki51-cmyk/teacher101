@@ -1,21 +1,25 @@
 :root {
-  --bg: #f6f4ef;
+  --bg: #f5f6f8;
   --surface: #ffffff;
-  --surface-alt: #faf8f3;
-  --border: #e2ded6;
-  --text: #1f2933;
-  --muted: #6b7280;
-  --primary: #2f4a5f;
-  --primary-hover: #243a4b;
-  --primary-soft: #e8eef2;
-  --green: #3f6b57;
-  --green-soft: #eaf2ec;
-  --amber: #b88746;
-  --amber-soft: #f7ebd8;
-  --red: #a15c54;
-  --red-soft: #f3e4e1;
-  --gray-soft: #efece6;
-  --shadow: none;
+  --surface-alt: #f8f9fb;
+  --border: #e4e7ec;
+  --text: #252831;
+  --muted: #747b89;
+  --primary: #5568e8;
+  --primary-hover: #4355cf;
+  --primary-soft: #eef0ff;
+  --green: #2f8b62;
+  --green-soft: #e9f5ef;
+  --amber: #b47a24;
+  --amber-soft: #fff4df;
+  --red: #c45462;
+  --red-soft: #fdecef;
+  --gray-soft: #f0f2f5;
+  --sidebar-bg: #1f2024;
+  --sidebar-surface: #303137;
+  --sidebar-text: #c9ccd4;
+  --sidebar-muted: #8f949f;
+  --shadow: 0 1px 2px rgba(24, 29, 39, 0.05);
 }
 
 * {
@@ -28,7 +32,7 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: "PingFang TC", "Microsoft JhengHei UI", "Microsoft JhengHei", "Noto Sans CJK TC", sans-serif;
-  font-size: 18px;
+  font-size: 16px;
   letter-spacing: 0;
 }
 
@@ -46,7 +50,7 @@ button {
 .app-shell {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 238px 1fr;
+  grid-template-columns: 220px minmax(0, 1fr);
 }
 
 .sidebar {
@@ -55,15 +59,15 @@ button {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 14px;
   padding: 0;
-  background: var(--surface);
-  border-right: 1px solid var(--border);
+  background: var(--sidebar-bg);
+  border-right: 1px solid #292a2f;
 }
 
 .brand {
   display: block;
-  padding: 24px 20px 18px;
+  padding: 22px 18px 16px;
 }
 
 .brand-mark {
@@ -80,7 +84,8 @@ button {
 
 .brand h1 {
   margin: 0;
-  font-size: 24px;
+  color: #ffffff;
+  font-size: 20px;
 }
 
 .brand p,
@@ -92,7 +97,8 @@ button {
 
 .brand p {
   margin-top: 3px;
-  font-size: 16px;
+  color: var(--sidebar-muted);
+  font-size: 13px;
 }
 
 .nav {
@@ -110,20 +116,26 @@ button {
 
 .nav-button {
   width: 100%;
-  min-height: 46px;
+  min-height: 42px;
   display: flex;
   align-items: center;
   gap: 0;
   padding: 0 12px;
   border-radius: 6px;
   text-align: left;
-  font-size: 19px;
+  color: var(--sidebar-text);
+  font-size: 15px;
 }
 
 .nav-button.active {
-  background: var(--primary-soft);
-  color: var(--primary);
+  background: var(--sidebar-surface);
+  color: #ffffff;
   font-weight: 700;
+}
+
+.nav-button:hover {
+  background: #292a2f;
+  color: #ffffff;
 }
 
 .sidebar-foot {
@@ -133,22 +145,38 @@ button {
   padding: 0 16px 20px;
 }
 
+.sidebar-foot .ghost-button {
+  border-color: #3a3b42;
+  background: transparent;
+  color: var(--sidebar-text);
+}
+
+.sidebar-foot .ghost-button:hover {
+  border-color: #51535c;
+  background: var(--sidebar-surface);
+  color: #ffffff;
+}
+
 .main {
   min-width: 0;
-  padding: 12px 22px 20px;
+  padding: 12px 24px 22px;
 }
 
 .topbar {
-  min-height: 82px;
+  min-height: 76px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+  margin: -12px -24px 14px;
+  padding: 0 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
 }
 
 .topbar h2 {
   margin: 0;
-  font-size: 31px;
+  font-size: 27px;
 }
 
 .topbar-actions {
@@ -159,7 +187,7 @@ button {
 
 .save-indicator {
   color: var(--muted);
-  font-size: 15px;
+  font-size: 13px;
 }
 
 .primary-button,
@@ -184,6 +212,13 @@ button {
 
 .primary-button:hover {
   background: var(--primary-hover);
+}
+
+.ghost-button:hover,
+.small-button:hover,
+.icon-button:hover {
+  border-color: #cfd4dd;
+  background: var(--surface-alt);
 }
 
 .danger-button {
@@ -222,7 +257,7 @@ button {
 .metric {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 8px;
   box-shadow: var(--shadow);
 }
 
@@ -240,19 +275,20 @@ button {
 
 .desktop-page-title h2 {
   margin: 0;
-  font-size: 30px;
+  font-size: 27px;
 }
 
 .desktop-page-title p {
   margin-top: 3px;
-  font-size: 16px;
+  font-size: 14px;
 }
 
 .goal-card,
 .home-panel {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 8px;
+  box-shadow: var(--shadow);
 }
 
 .goal-card {
@@ -270,7 +306,7 @@ button {
 .goal-head h3,
 .home-panel h3 {
   margin: 0;
-  font-size: 23px;
+  font-size: 20px;
 }
 
 .goal-number-row {
@@ -282,19 +318,19 @@ button {
 
 .goal-number-row strong {
   color: var(--primary);
-  font-size: 57px;
+  font-size: 50px;
   line-height: 1;
 }
 
 .goal-number-row span {
-  font-size: 24px;
+  font-size: 20px;
   font-weight: 700;
 }
 
 .goal-summary {
   margin: 10px 0 0;
   color: var(--primary);
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 700;
 }
 
@@ -342,7 +378,7 @@ button {
 
 .home-project-card h4 {
   margin: 0;
-  font-size: 19px;
+  font-size: 16px;
   line-height: 1.35;
 }
 
@@ -513,6 +549,14 @@ button {
   width: min(360px, 100%);
 }
 
+.search-input:focus,
+.select:focus,
+.textarea:focus {
+  border-color: var(--primary);
+  outline: 3px solid var(--primary-soft);
+  outline-offset: 0;
+}
+
 .project-page-title {
   margin-bottom: 14px;
 }
@@ -546,8 +590,9 @@ button {
 .project-board-card,
 .project-history-card {
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 8px;
   background: var(--surface);
+  box-shadow: var(--shadow);
 }
 
 .desktop-project-card {
@@ -573,7 +618,7 @@ button {
 .project-card-head h3 {
   margin: 0 0 2px;
   overflow-wrap: anywhere;
-  font-size: 22px;
+  font-size: 18px;
 }
 
 .project-meta,
@@ -584,18 +629,18 @@ button {
 }
 
 .project-meta {
-  font-size: 15px;
+  font-size: 14px;
 }
 
 .project-stage-line {
   margin-top: 12px;
-  font-size: 15px;
+  font-size: 14px;
 }
 
 .project-next-line {
   min-height: 44px;
   margin-top: 4px;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 700;
 }
 
@@ -627,7 +672,7 @@ button {
 .project-summary-main h2 {
   margin: 0 0 4px;
   overflow-wrap: anywhere;
-  font-size: 28px;
+  font-size: 24px;
 }
 
 .project-summary-main p {
@@ -675,7 +720,7 @@ button {
 .project-board-card h3,
 .project-history-card h3 {
   margin: 0;
-  font-size: 22px;
+  font-size: 18px;
 }
 
 .detail-card-header p,
@@ -1157,7 +1202,7 @@ button.day-cell:hover {
   max-height: min(760px, calc(100vh - 36px));
   overflow: auto;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 8px;
   background: var(--surface);
   padding: 18px;
 }
@@ -1264,30 +1309,32 @@ button.day-cell:hover {
   }
 
   .main {
-    padding: 12px 12px 78px;
+    padding: 8px 8px 64px;
   }
 
   body {
-    font-size: 15px;
+    font-size: 14px;
   }
 
   .topbar {
-    min-height: 72px;
-    align-items: flex-start;
-    gap: 10px;
+    min-height: 58px;
+    align-items: center;
+    gap: 8px;
+    margin: -8px -8px 8px;
+    padding: 7px 10px;
   }
 
   .topbar h2 {
-    font-size: 21px;
+    font-size: 18px;
   }
 
   .eyebrow,
   .save-indicator {
-    font-size: 12px;
+    font-size: 10px;
   }
 
   .topbar-actions {
-    gap: 5px;
+    gap: 4px;
     flex-wrap: wrap;
     justify-content: flex-end;
   }
@@ -1296,13 +1343,22 @@ button.day-cell:hover {
   .ghost-button,
   .small-button,
   .danger-button {
-    min-height: 32px;
-    padding: 0 10px;
-    font-size: 14px;
+    min-height: 28px;
+    padding: 0 8px;
+    font-size: 12px;
   }
 
   .card {
-    padding: 14px;
+    padding: 10px;
+  }
+
+  .grid,
+  .home-body {
+    gap: 10px;
+  }
+
+  .list {
+    gap: 6px;
   }
 
   .desktop-page-title {
@@ -1310,21 +1366,40 @@ button.day-cell:hover {
   }
 
   .desktop-page-title h2 {
-    font-size: 24px;
+    font-size: 19px;
   }
 
   .desktop-page-title .primary-button {
-    margin-top: 10px;
+    margin-top: 6px;
     width: 100%;
   }
 
   .goal-number-row strong {
-    font-size: 44px;
+    font-size: 34px;
   }
 
   .home-panel h3,
   .goal-head h3 {
-    font-size: 20px;
+    font-size: 17px;
+  }
+
+  .goal-card,
+  .home-panel {
+    padding: 10px;
+  }
+
+  .goal-card {
+    margin-bottom: 10px;
+  }
+
+  .goal-summary {
+    margin-top: 6px;
+    font-size: 13px;
+  }
+
+  .panel-subtitle {
+    margin-bottom: 6px;
+    font-size: 11px;
   }
 
   .stat-grid,
@@ -1336,6 +1411,7 @@ button.day-cell:hover {
 
   .project-filters {
     grid-template-columns: 1fr 1fr;
+    gap: 6px;
   }
 
   .project-filters .search-input {
@@ -1344,11 +1420,12 @@ button.day-cell:hover {
 
   .project-summary-card {
     grid-template-columns: 1fr;
-    padding: 15px;
+    gap: 8px;
+    padding: 10px;
   }
 
   .project-summary-main h2 {
-    font-size: 23px;
+    font-size: 19px;
   }
 
   .project-summary-actions {
@@ -1386,7 +1463,7 @@ button.day-cell:hover {
 
   .calendar-card .card-header {
     display: grid;
-    gap: 10px;
+    gap: 7px;
   }
 
   .calendar-card .card-header .toolbar {
@@ -1396,7 +1473,7 @@ button.day-cell:hover {
   }
 
   .calendar-layout {
-    gap: 14px;
+    gap: 10px;
   }
 
   .calendar-grid {
@@ -1405,13 +1482,13 @@ button.day-cell:hover {
   }
 
   .day-name {
-    min-height: 26px;
-    font-size: 11px;
+    min-height: 22px;
+    font-size: 10px;
   }
 
   .day-cell {
-    min-height: 48px;
-    padding: 5px;
+    min-height: 40px;
+    padding: 4px;
   }
 
   .day-cell.empty {
@@ -1420,7 +1497,7 @@ button.day-cell:hover {
 
   .day-number {
     margin: 0;
-    font-size: 13px;
+    font-size: 11px;
   }
 
   .day-dot {
@@ -1440,24 +1517,54 @@ button.day-cell:hover {
   }
 
   .calendar-day-header h4 {
-    font-size: 16px;
-  }
-
-  .calendar-day-kicker {
-    font-size: 11px;
-  }
-
-  .item-card {
-    gap: 5px;
-    padding: 10px;
-  }
-
-  .item-title {
     font-size: 14px;
   }
 
+  .calendar-day-kicker {
+    font-size: 9px;
+  }
+
+  .item-card {
+    gap: 4px;
+    padding: 8px;
+  }
+
+  .item-title {
+    font-size: 12px;
+  }
+
   .item-meta {
-    font-size: 11px;
+    gap: 4px;
+    font-size: 10px;
+  }
+
+  .search-input,
+  .select,
+  .textarea {
+    min-height: 32px;
+    padding: 0 8px;
+    font-size: 13px;
+  }
+
+  .desktop-project-card,
+  .project-work-card,
+  .project-board-card,
+  .project-history-card,
+  .import-panel {
+    padding: 10px;
+  }
+
+  .project-card-head h3,
+  .detail-card-header h3,
+  .project-board-card h3,
+  .project-history-card h3 {
+    font-size: 16px;
+  }
+
+  .project-meta,
+  .project-stage-line,
+  .project-next-line {
+    font-size: 12px;
   }
 
   .bottom-nav {
@@ -1467,8 +1574,8 @@ button.day-cell:hover {
     bottom: 0;
     z-index: 20;
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
-    min-height: 64px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    min-height: 54px;
     border-top: 1px solid var(--border);
     background: rgba(255, 255, 255, 0.96);
     backdrop-filter: blur(12px);
@@ -1478,8 +1585,8 @@ button.day-cell:hover {
     display: grid;
     place-items: center;
     gap: 2px;
-    padding: 7px 3px;
-    font-size: 10px;
+    padding: 5px 2px;
+    font-size: 9px;
   }
 
   .bottom-nav .active {
@@ -1495,36 +1602,36 @@ button.day-cell:hover {
 
 @media (max-width: 420px) {
   body {
-    font-size: 14px;
+    font-size: 13px;
   }
 
   .main {
-    padding: 10px 10px 76px;
+    padding: 7px 7px 60px;
   }
 
   .topbar h2 {
-    font-size: 20px;
+    font-size: 17px;
   }
 
   .card {
-    padding: 12px;
+    padding: 8px;
   }
 
   .primary-button,
   .ghost-button,
   .small-button,
   .danger-button {
-    min-height: 30px;
-    padding: 0 8px;
-    font-size: 13px;
+    min-height: 26px;
+    padding: 0 7px;
+    font-size: 11px;
   }
 
   .day-cell {
-    min-height: 44px;
-    padding: 4px;
+    min-height: 38px;
+    padding: 3px;
   }
 
   .day-number {
-    font-size: 12px;
+    font-size: 10px;
   }
 }
