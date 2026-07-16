@@ -186,6 +186,13 @@ button {
   align-items: center;
 }
 
+.mobile-button-label,
+.mobile-project-back,
+.project-mobile-tabs,
+.mobile-account-panel {
+  display: none;
+}
+
 .topbar-search {
   width: min(240px, 24vw);
   min-height: 36px;
@@ -354,12 +361,21 @@ button {
   display: grid;
   grid-template-columns: 3fr 2fr;
   grid-template-rows: auto auto;
+  grid-template-areas: "formal phone" "formal today";
   gap: 16px;
   align-items: start;
 }
 
 .formal-panel {
-  grid-row: span 2;
+  grid-area: formal;
+}
+
+.phone-panel {
+  grid-area: phone;
+}
+
+.today-work-panel {
+  grid-area: today;
 }
 
 .home-panel {
@@ -429,6 +445,17 @@ button {
 .home-task-row p {
   margin: 2px 0 4px;
   font-size: 13px;
+}
+
+.home-task-actions {
+  display: none;
+  gap: 4px;
+}
+
+.home-task-actions .small-button {
+  min-height: 28px;
+  padding: 0 7px;
+  font-size: 12px;
 }
 
 .task-dot {
@@ -1804,6 +1831,10 @@ button.day-cell:hover {
 }
 
 @media (max-width: 760px) {
+  html {
+    scroll-padding-top: 108px;
+  }
+
   .app-shell {
     display: block;
   }
@@ -1813,7 +1844,7 @@ button.day-cell:hover {
   }
 
   .main {
-    padding: 8px 8px 64px;
+    padding: 0 10px calc(72px + env(safe-area-inset-bottom));
   }
 
   body {
@@ -1821,47 +1852,85 @@ button.day-cell:hover {
   }
 
   .topbar {
-    min-height: 58px;
-    align-items: center;
-    gap: 8px;
-    margin: -8px -8px 8px;
-    padding: 7px 10px;
+    position: sticky;
+    top: 0;
+    z-index: 18;
+    min-height: 84px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 7px;
+    margin: 0 -10px 10px;
+    padding: 8px 10px;
+    box-shadow: 0 5px 16px rgba(26, 42, 53, 0.06);
   }
 
   .topbar h2 {
+    overflow: hidden;
     font-size: 18px;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .eyebrow,
   .save-indicator {
-    font-size: 10px;
+    font-size: 9px;
+  }
+
+  .topbar-title-block {
+    min-width: 0;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .topbar-title-block h2 {
+    order: -1;
+    min-width: 0;
+  }
+
+  .topbar-title-block .eyebrow {
+    flex: 0 0 auto;
+    white-space: nowrap;
   }
 
   .topbar-actions {
-    width: min(64%, 230px);
-    gap: 4px;
-    flex-wrap: wrap;
-    justify-content: flex-end;
+    width: 100%;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 6px;
   }
 
   .topbar-search {
-    order: 10;
     width: 100%;
-    min-height: 28px;
-    padding: 0 8px;
-    font-size: 11px;
+    min-height: 38px;
+    padding: 0 10px;
+    font-size: 13px;
   }
 
   .quick-add-button {
-    order: -1;
+    min-width: 58px;
+    min-height: 38px;
+  }
+
+  .desktop-button-label,
+  #refreshButton,
+  #logoutButton,
+  .topbar .save-indicator {
+    display: none;
+  }
+
+  .mobile-button-label {
+    display: inline;
   }
 
   .primary-button,
   .ghost-button,
   .small-button,
   .danger-button {
-    min-height: 28px;
-    padding: 0 8px;
+    min-height: 36px;
+    padding: 0 10px;
     font-size: 12px;
   }
 
@@ -1880,29 +1949,59 @@ button.day-cell:hover {
 
   .desktop-page-title {
     display: block;
+    margin: 0 0 8px;
   }
 
-  .desktop-page-title h2 {
-    font-size: 19px;
+  .desktop-page-title > div {
+    display: none;
   }
 
   .desktop-page-title .primary-button {
-    margin-top: 6px;
+    margin-top: 0;
     width: 100%;
   }
 
+  .dashboard-page {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .dashboard-page > .desktop-page-title {
+    order: 0;
+  }
+
+  .dashboard-page > .home-body {
+    display: contents;
+  }
+
+  .today-work-panel {
+    order: 1;
+  }
+
+  .phone-panel {
+    order: 2;
+  }
+
+  .dashboard-page > .goal-card {
+    order: 3;
+  }
+
+  .formal-panel {
+    order: 4;
+  }
+
   .goal-number-row strong {
-    font-size: 34px;
+    font-size: 30px;
   }
 
   .home-panel h3,
   .goal-head h3 {
-    font-size: 17px;
+    font-size: 15px;
   }
 
   .goal-card,
   .home-panel {
-    padding: 10px;
+    padding: 11px;
   }
 
   .goal-card {
@@ -1911,12 +2010,68 @@ button.day-cell:hover {
 
   .goal-summary {
     margin-top: 6px;
-    font-size: 13px;
+    font-size: 11px;
+    line-height: 1.5;
   }
 
   .panel-subtitle {
-    margin-bottom: 6px;
+    display: none;
+  }
+
+  .priority-line {
+    margin: 6px 0;
     font-size: 11px;
+  }
+
+  .home-task-row {
+    grid-template-columns: 16px minmax(0, 1fr);
+    gap: 3px 6px;
+    border-bottom: 1px solid var(--border);
+    padding: 8px 0;
+  }
+
+  .home-task-row:last-child {
+    border-bottom: 0;
+  }
+
+  .home-task-row strong {
+    font-size: 13px;
+  }
+
+  .home-task-row p {
+    margin: 2px 0 0;
+    font-size: 10px;
+  }
+
+  .home-task-actions {
+    grid-column: 2;
+    display: flex;
+  }
+
+  .home-task-actions .small-button {
+    min-height: 30px;
+    font-size: 11px;
+  }
+
+  .home-project-card {
+    gap: 5px;
+    padding: 10px;
+  }
+
+  .home-project-card h4 {
+    font-size: 13px;
+  }
+
+  .home-project-card p {
+    font-size: 10px;
+  }
+
+  .home-project-actions {
+    justify-content: stretch;
+  }
+
+  .home-project-actions button {
+    flex: 1;
   }
 
   .stat-grid,
@@ -1929,6 +2084,7 @@ button.day-cell:hover {
   .project-filters {
     grid-template-columns: 1fr 1fr;
     gap: 6px;
+    margin-bottom: 8px;
   }
 
   .project-filters .search-input {
@@ -1939,35 +2095,155 @@ button.day-cell:hover {
     grid-column: 1 / -1;
   }
 
+  .desktop-project-card {
+    padding: 11px;
+  }
+
+  .project-card-head {
+    gap: 8px;
+  }
+
+  .project-card-head h3 {
+    font-size: 15px;
+  }
+
+  .project-stage-line {
+    margin-top: 7px;
+  }
+
+  .project-next-line {
+    min-height: 0;
+    margin-top: 3px;
+  }
+
+  .project-card-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .small-project-button {
+    min-height: 36px;
+    font-size: 12px;
+  }
+
   .project-summary-card {
     grid-template-columns: 1fr;
     gap: 8px;
-    padding: 10px;
+    margin: 0 0 8px;
+    padding: 11px;
   }
 
   .project-summary-main h2 {
-    font-size: 19px;
+    font-size: 16px;
+  }
+
+  .project-summary-main p {
+    margin: 3px 0;
+    font-size: 11px;
   }
 
   .project-summary-actions {
-    align-items: flex-start;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 6px;
+  }
+
+  .mobile-project-back {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
 
   .summary-buttons {
+    grid-column: 1 / -1;
     justify-content: flex-start;
+  }
+
+  .summary-buttons button {
+    flex: 1 1 auto;
+  }
+
+  .project-mobile-tabs {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin-bottom: 8px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    background: var(--surface);
+  }
+
+  .mobile-account-panel {
+    display: block;
+    order: -1;
+  }
+
+  .mobile-account-panel .toolbar {
+    margin-top: 10px;
+  }
+
+  .project-mobile-tabs button {
+    min-height: 40px;
+    border: 0;
+    border-right: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--muted);
+    font-size: 12px;
+  }
+
+  .project-mobile-tabs button:last-child {
+    border-right: 0;
+  }
+
+  .project-mobile-tabs button.active {
+    background: var(--primary);
+    color: var(--primary-contrast);
+    font-weight: 800;
+  }
+
+  .project-detail-columns {
+    display: block;
+  }
+
+  .project-mobile-panel {
+    display: none;
+  }
+
+  .project-mobile-panel.active {
+    display: block;
+  }
+
+  .project-board-card,
+  .project-history-card {
+    margin-top: 0;
   }
 
   .compact-task-row {
     grid-template-columns: 22px minmax(0, 1fr);
+    align-items: start;
+    padding: 9px 8px;
   }
 
   .compact-task-row > .toolbar {
     grid-column: 2;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .compact-task-row > .toolbar button {
+    min-height: 32px;
   }
 
   .checklist-group-head {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .checklist-group-head .toolbar {
+    width: 100%;
+    flex-wrap: wrap;
   }
 
   .checklist-item-detail {
@@ -1980,6 +2256,16 @@ button.day-cell:hover {
 
   .message-compose {
     grid-template-columns: 1fr;
+  }
+
+  .message-compose button {
+    width: 100%;
+  }
+
+  .message-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    font-size: 11px;
   }
 
   .calendar-card .card-header {
@@ -1999,6 +2285,20 @@ button.day-cell:hover {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     width: 100%;
+  }
+
+  .calendar-header-actions {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  .calendar-header-actions .segmented-control {
+    grid-template-columns: repeat(3, 36px);
+  }
+
+  .calendar-header-actions .segmented-control button {
+    min-height: 36px;
   }
 
   .calendar-filters {
@@ -2030,7 +2330,7 @@ button.day-cell:hover {
   }
 
   .day-cell {
-    min-height: 44px;
+    min-height: 48px;
     padding: 4px;
   }
 
@@ -2141,7 +2441,7 @@ button.day-cell:hover {
 
   .calendar-sheet-backdrop {
     position: fixed;
-    inset: 0 0 54px;
+    inset: 0 0 calc(62px + env(safe-area-inset-bottom));
     z-index: 28;
     display: block;
     border: 0;
@@ -2159,7 +2459,7 @@ button.day-cell:hover {
   .calendar-day-panel {
     position: fixed;
     right: 0;
-    bottom: 54px;
+    bottom: calc(62px + env(safe-area-inset-bottom));
     left: 0;
     z-index: 29;
     max-height: min(66dvh, 560px);
@@ -2232,9 +2532,9 @@ button.day-cell:hover {
   .search-input,
   .select,
   .textarea {
-    min-height: 32px;
-    padding: 0 8px;
-    font-size: 13px;
+    min-height: 38px;
+    padding: 0 9px;
+    font-size: 14px;
   }
 
   .desktop-project-card,
@@ -2266,24 +2566,92 @@ button.day-cell:hover {
     z-index: 20;
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    min-height: 54px;
+    min-height: calc(62px + env(safe-area-inset-bottom));
+    padding-bottom: env(safe-area-inset-bottom);
     border-top: 1px solid var(--border);
     background: rgba(255, 255, 255, 0.96);
     backdrop-filter: blur(12px);
   }
 
   .bottom-nav button {
+    position: relative;
     display: grid;
     place-items: center;
-    gap: 2px;
-    padding: 5px 2px;
-    font-size: 9px;
+    min-width: 0;
+    padding: 8px 2px 6px;
+    color: var(--muted);
+    font-size: 11px;
+  }
+
+  .bottom-nav button::before {
+    position: absolute;
+    top: 0;
+    left: 22%;
+    right: 22%;
+    height: 3px;
+    border-radius: 0 0 3px 3px;
+    background: transparent;
+    content: "";
   }
 
   .modal-card {
-    width: calc(100vw - 16px);
-    max-height: calc(100dvh - 20px);
-    padding: 12px;
+    width: 100%;
+    max-height: calc(100dvh - 10px);
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 0;
+    border-radius: 8px 8px 0 0;
+    padding: 12px 12px calc(12px + env(safe-area-inset-bottom));
+  }
+
+  .modal-layer {
+    place-items: end stretch;
+    padding: 10px 0 0;
+  }
+
+  .modal-header {
+    position: sticky;
+    top: -12px;
+    z-index: 2;
+    align-items: center;
+    margin: -12px -12px 10px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    padding: 10px 12px;
+  }
+
+  .modal-header h3 {
+    font-size: 16px;
+  }
+
+  .modal-header .icon-button {
+    min-width: 36px;
+    padding: 0;
+  }
+
+  .modal-actions {
+    position: sticky;
+    bottom: calc(-12px - env(safe-area-inset-bottom));
+    z-index: 2;
+    margin: 4px -12px calc(-12px - env(safe-area-inset-bottom));
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+  }
+
+  .modal-actions .toolbar {
+    flex: 1;
+  }
+
+  .modal-actions .toolbar button {
+    flex: 1;
+  }
+
+  .modal-card .search-input,
+  .modal-card .select,
+  .modal-card .textarea {
+    min-height: 42px;
+    font-size: 16px;
   }
 
   .form-grid label {
@@ -2292,8 +2660,18 @@ button.day-cell:hover {
   }
 
   .bottom-nav .active {
+    background: var(--primary-soft);
     color: var(--primary);
     font-weight: 800;
+  }
+
+  .bottom-nav .active::before {
+    background: var(--primary);
+  }
+
+  .toast {
+    bottom: calc(72px + env(safe-area-inset-bottom));
+    font-size: 12px;
   }
 
   .two-col,
@@ -2308,11 +2686,17 @@ button.day-cell:hover {
   }
 
   .main {
-    padding: 7px 7px 60px;
+    padding-right: 8px;
+    padding-left: 8px;
   }
 
   .topbar h2 {
     font-size: 17px;
+  }
+
+  .topbar {
+    margin-right: -8px;
+    margin-left: -8px;
   }
 
   .card {
@@ -2323,13 +2707,13 @@ button.day-cell:hover {
   .ghost-button,
   .small-button,
   .danger-button {
-    min-height: 26px;
-    padding: 0 7px;
+    min-height: 34px;
+    padding: 0 8px;
     font-size: 11px;
   }
 
   .day-cell {
-    min-height: 38px;
+    min-height: 44px;
     padding: 3px;
   }
 

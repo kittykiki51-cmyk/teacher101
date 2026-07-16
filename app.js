@@ -10,10 +10,10 @@ const ROLE_UNSET = "未設定";
 const STAGE_NAMES = ["講師資料", "課綱與合約", "課程錄製", "影片後製", "課程上架"];
 
 const NAV_ITEMS = [
-  { id: "dashboard", label: "營運首頁", icon: "", title: "營運首頁" },
-  { id: "projects", label: "課程專案", icon: "", title: "課程專案" },
-  { id: "calendar", label: "工作月曆", icon: "", title: "工作月曆" },
-  { id: "settings", label: "更多設定", icon: "", title: "更多設定" },
+  { id: "dashboard", label: "營運首頁", mobileLabel: "首頁", icon: "", title: "營運首頁" },
+  { id: "projects", label: "課程專案", mobileLabel: "專案", icon: "", title: "課程專案" },
+  { id: "calendar", label: "工作月曆", mobileLabel: "月曆", icon: "", title: "工作月曆" },
+  { id: "settings", label: "更多設定", mobileLabel: "設定", icon: "", title: "更多設定" },
 ];
 
 const emptyWorkspace = () => ({
@@ -39,6 +39,7 @@ let state = {
   calendarStatusFilter: "全部",
   calendarView: "month",
   calendarMobilePanelOpen: false,
+  projectMobileTab: "work",
   globalQuery: "",
   pageBeforeSearch: "dashboard",
   selectedProjectId: "",
@@ -361,7 +362,7 @@ function renderNav() {
   $("#desktopNav").innerHTML = html;
   $("#mobileNav").innerHTML = NAV_ITEMS.map((item) => `
     <button class="${activePage === item.id ? "active" : ""}" data-page="${item.id}">
-      <span>${item.icon}</span><span>${item.label}</span>
+      <span>${item.mobileLabel}</span>
     </button>
   `).join("");
   document.querySelectorAll("[data-page]").forEach((button) => {
@@ -434,6 +435,7 @@ function renderDashboard() {
   const today = new Date();
   const tasks = todayTasks().slice(0, 8);
   return `
+    <div class="dashboard-page">
     <div class="desktop-page-title">
       <div>
         <h2>${escapeHTML(monthLabel(currentMonth))}營運首頁</h2>
@@ -458,21 +460,22 @@ function renderDashboard() {
         <p class="muted panel-subtitle">只列出本月真正要推進上架的正式課程。</p>
         <div class="list">${homeProjectCards(targetProjects)}</div>
       </section>
-      <section class="home-panel">
+      <section class="home-panel phone-panel">
         <div class="panel-title-row">
           <h3>今日電話聯繫</h3>
-          <button class="primary-button small-primary">新增電話</button>
+          <button class="primary-button small-primary" data-phone-add>新增電話</button>
         </div>
         <p class="muted panel-subtitle">${today.getMonth() + 1}/${today.getDate()}，待聯繫排前面，完成後保留到今天結束。</p>
         <div class="list">${taskList(todayPhoneTasks().slice(0, 8), "今天尚未安排電話聯繫。", true)}</div>
       </section>
-      <section class="home-panel">
+      <section class="home-panel today-work-panel">
         <h3>今日工作</h3>
         <p class="muted panel-subtitle">${today.getMonth() + 1}/${today.getDate()}，電話聯繫已獨立顯示，其餘工作依時間排序。</p>
         ${tasks[0] ? `<p class="priority-line">今日優先：${escapeHTML(tasks[0].title || "未命名工作")}${projectById(tasks[0].project_id) ? `｜${escapeHTML(projectById(tasks[0].project_id).course || "")}` : ""}</p>` : ""}
         <div class="list">${homeTaskRows(tasks, "今天尚未安排其他工作。")}</div>
-        <button class="primary-button weekly-button" data-page="calendar">本週任務狀態</button>
+        <button class="primary-button weekly-button" data-page="calendar">開啟工作月曆</button>
       </section>
+    </div>
     </div>
   `;
 }
@@ -529,6 +532,7 @@ function homeTaskRows(tasks, emptyText) {
           <strong>${escapeHTML(task.title || "未命名工作")}</strong>
           <p class="muted">截止：${humanDate(task.date)} ${escapeHTML(task.time || "")}${project ? `｜${escapeHTML(project.course || "")}` : ""}</p>
         </div>
+        <div class="home-task-actions"><button class="small-button" data-complete="${escapeHTML(task.id)}">完成</button><button class="small-button" data-task-edit="${escapeHTML(task.id)}">編輯</button></div>
       </div>
     `;
   }).join("");
@@ -697,6 +701,7 @@ function renderProjectDetail() {
         <p class="${project.waiting_for ? "amber-text" : "muted"}">等待對象：${escapeHTML(project.waiting_for || "無")}</p>
       </div>
       <div class="project-summary-actions">
+        <button class="ghost-button mobile-project-back" data-page="projects">返回專案</button>
         ${pill(finished ? "已完成｜此專案結束" : risk.label, finished ? "green" : risk.tone)}
         <div class="toolbar summary-buttons">
           <button class="ghost-button" data-task-add="${escapeHTML(project.id)}">新增工作</button>
@@ -706,8 +711,11 @@ function renderProjectDetail() {
         </div>
       </div>
     </section>
+    <nav class="project-mobile-tabs" aria-label="專案內容分頁">
+      ${[["work", "工作"], ["checklist", "清單"], ["message", "留言"], ["history", "紀錄"]].map(([value, label]) => `<button class="${state.projectMobileTab === value ? "active" : ""}" data-project-mobile-tab="${value}">${label}</button>`).join("")}
+    </nav>
     <div class="project-detail-columns">
-      <section class="project-work-card">
+      <section class="project-work-card project-mobile-panel ${state.projectMobileTab === "work" ? "active" : ""}" data-project-mobile-panel="work">
         <div class="detail-card-header">
           <div><h3>工作排程</h3><p class="muted">所有日期、狀態與下一步都以這裡為準；可勾選後批次刪除。</p></div>
           <div class="toolbar">
@@ -721,7 +729,7 @@ function renderProjectDetail() {
           ${state.expandedCompletedProjectIds.has(project.id) ? completed.map(renderCompletedProjectTask).join("") : ""}
         </div>
       </section>
-      <section class="project-work-card">
+      <section class="project-work-card project-mobile-panel ${state.projectMobileTab === "checklist" ? "active" : ""}" data-project-mobile-panel="checklist">
         <div class="detail-card-header">
           <div><h3>檢查清單</h3><p class="muted">確認完整度，不進入月曆。</p></div>
           <div class="toolbar">
@@ -735,7 +743,7 @@ function renderProjectDetail() {
         </div>
       </section>
     </div>
-    <section class="project-board-card">
+    <section class="project-board-card project-mobile-panel ${state.projectMobileTab === "message" ? "active" : ""}" data-project-mobile-panel="message">
       <div><h3>留言板</h3><p class="muted">記錄跟老師說了什麼、目前狀況；送出時會自動加上日期時間。</p></div>
       <form class="message-compose" id="messageForm">
         <textarea class="textarea" name="message" rows="3" aria-label="留言內容"></textarea>
@@ -743,7 +751,7 @@ function renderProjectDetail() {
       </form>
       <div class="message-list">${messages.map((message) => `<div class="message-row"><span>${escapeHTML((message.time || message.created_at || "").replace("T", " ").slice(0, 16))}　${escapeHTML(message.text || "")}</span><button class="danger-button" data-message-delete="${escapeHTML(message.id)}">刪除</button></div>`).join("") || `<p class="muted">尚無留言。</p>`}</div>
     </section>
-    <section class="project-history-card">
+    <section class="project-history-card project-mobile-panel ${state.projectMobileTab === "history" ? "active" : ""}" data-project-mobile-panel="history">
       <h3>重要紀錄</h3>
       ${history.map((item) => `<p class="muted">${escapeHTML((item.time || "").replace("T", " "))}　${escapeHTML(item.text || item.msg || "")}</p>`).join("") || `<p class="muted">尚無重要紀錄。</p>`}
     </section>
@@ -824,7 +832,7 @@ function taskList(tasks, emptyText, phoneMode = false) {
           ${pill(phoneMode ? task.phone_status || "待聯繫" : task.status || "未完成", statusTone)}
         </div>
         <div class="toolbar">
-          ${phoneMode ? "" : `<button class="small-button" data-task-edit="${escapeHTML(task.id)}">編輯</button>`}
+          <button class="small-button" data-task-edit="${escapeHTML(task.id)}">編輯</button>
           ${completed ? "" : `<button class="small-button" data-complete="${escapeHTML(task.id)}">完成</button>`}
           ${phoneMode ? `<button class="small-button" data-phone="${escapeHTML(task.id)}" data-status="已聯繫">已聯繫</button><button class="small-button" data-phone="${escapeHTML(task.id)}" data-status="待回覆">待回覆</button>` : ""}
         </div>
@@ -1011,19 +1019,25 @@ function renderPhone() {
 
 function renderSettings() {
   const data = state.workspace;
+  const notificationPermission = "Notification" in window ? Notification.permission : "unsupported";
   const notificationState = !CLOUD_MODE
     ? "部署到 HTTPS 雲端後即可啟用"
-    : !("Notification" in window)
+    : notificationPermission === "unsupported"
       ? "此瀏覽器不支援通知"
-      : Notification.permission === "granted"
+      : notificationPermission === "granted"
         ? "這台裝置已允許通知"
-        : Notification.permission === "denied" ? "通知已被瀏覽器封鎖" : "尚未啟用";
+        : notificationPermission === "denied" ? "通知已被瀏覽器封鎖" : "尚未啟用";
   return `
     <section class="card">
       <div class="card-header">
         <div><h3>資料設定</h3><p class="muted">${CLOUD_MODE ? "資料會自動同步至雲端" : "目前資料保存在這個瀏覽器"}</p></div>
       </div>
       <div class="grid dashboard-grid">
+        <div class="import-panel mobile-account-panel">
+          <h4>雲端與帳號</h4>
+          <p class="muted">${CLOUD_MODE ? "資料會自動同步至雲端" : "目前使用瀏覽器本機資料"}</p>
+          <div class="toolbar"><button class="ghost-button" data-mobile-refresh>重新同步</button>${CLOUD_MODE ? `<button class="danger-button" data-mobile-logout>登出</button>` : ""}</div>
+        </div>
         <form class="import-panel goal-settings-panel" id="goalSettingsForm">
           <h4>本月上架目標</h4>
           <p class="muted">設定營運首頁要追蹤的課程門數。</p>
@@ -1037,8 +1051,8 @@ function renderSettings() {
           <h4>Chrome 到時提醒</h4>
           <p class="muted">${notificationState}</p>
           <div class="toolbar" style="margin-top:12px">
-            <button class="primary-button" data-notifications ${!CLOUD_MODE || !("Notification" in window) || Notification.permission === "denied" ? "disabled" : ""}>啟用這台裝置的通知</button>
-            <button class="ghost-button" data-test-notification ${Notification.permission === "granted" ? "" : "disabled"}>測試通知</button>
+            <button class="primary-button" data-notifications ${!CLOUD_MODE || notificationPermission === "unsupported" || notificationPermission === "denied" ? "disabled" : ""}>啟用這台裝置的通知</button>
+            <button class="ghost-button" data-test-notification ${notificationPermission === "granted" ? "" : "disabled"}>測試通知</button>
           </div>
         </div>
         <div class="import-panel">
@@ -1158,7 +1172,15 @@ function bindContentEvents() {
   document.querySelectorAll("[data-project-open]").forEach((button) => {
     button.addEventListener("click", () => {
       state.selectedProjectId = button.dataset.projectOpen;
+      state.projectMobileTab = "work";
       state.page = "projectDetail";
+      render();
+    });
+  });
+
+  document.querySelectorAll("[data-project-mobile-tab]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.projectMobileTab = button.dataset.projectMobileTab;
       render();
     });
   });
@@ -1174,6 +1196,7 @@ function bindContentEvents() {
   });
 
   document.querySelectorAll("[data-task-add]").forEach((button) => button.addEventListener("click", () => openTaskDialog(null, button.dataset.taskAdd)));
+  document.querySelectorAll("[data-phone-add]").forEach((button) => button.addEventListener("click", () => openTaskDialog({ date: todayISO(), status: "未完成", reminder_minutes: "0", task_type: TASK_TYPE_PHONE, phone_status: "待聯繫" })));
   document.querySelectorAll("[data-task-edit]").forEach((button) => button.addEventListener("click", () => openTaskDialog(state.workspace.tasks.find((task) => task.id === button.dataset.taskEdit))));
   document.querySelectorAll("[data-postpone]").forEach((button) => button.addEventListener("click", () => postponeTask(button.dataset.postpone)));
   document.querySelectorAll("[data-task-select]").forEach((input) => input.addEventListener("change", () => {
@@ -1198,6 +1221,8 @@ function bindContentEvents() {
   document.querySelectorAll("[data-template-save]").forEach((button) => button.addEventListener("click", saveChecklistTemplate));
   document.querySelectorAll("[data-notifications]").forEach((button) => button.addEventListener("click", enableNotifications));
   document.querySelectorAll("[data-test-notification]").forEach((button) => button.addEventListener("click", testNotification));
+  document.querySelectorAll("[data-mobile-refresh]").forEach((button) => button.addEventListener("click", refreshWorkspace));
+  document.querySelectorAll("[data-mobile-logout]").forEach((button) => button.addEventListener("click", logoutCloud));
 
   const messageForm = $("#messageForm");
   if (messageForm) messageForm.addEventListener("submit", addProjectMessage);
@@ -1277,7 +1302,7 @@ function bindContentEvents() {
     button.addEventListener("click", (event) => {
       if (event.target.closest("[data-calendar-task]") || Date.now() < calendarSwipeUntil) return;
       const clickedAt = Date.now();
-      const isDoubleActivation = lastCalendarTarget === button && clickedAt - lastCalendarClickAt <= 400;
+      const isDoubleActivation = lastCalendarTarget === button && clickedAt - lastCalendarClickAt <= 300;
       window.clearTimeout(calendarSelectionTimer);
       if (isDoubleActivation) {
         lastCalendarTarget = null;
@@ -1294,7 +1319,7 @@ function bindContentEvents() {
         lastCalendarClickAt = 0;
         selectCalendarDate(button.dataset.calendarDate);
         render();
-      }, 400);
+      }, 300);
     });
   });
   document.querySelectorAll("[data-calendar-drop]").forEach((target) => {
@@ -1319,7 +1344,7 @@ function bindContentEvents() {
     if (event.target.closest("[data-calendar-task]")) return;
     const clickedAt = Date.now();
     window.clearTimeout(timeSelectionTimer);
-    if (lastTimeTarget === target && clickedAt - lastTimeClickAt <= 400) {
+    if (lastTimeTarget === target && clickedAt - lastTimeClickAt <= 300) {
       lastTimeTarget = null;
       lastTimeClickAt = 0;
       selectCalendarDate(target.dataset.calendarDrop);
@@ -1334,7 +1359,7 @@ function bindContentEvents() {
       lastTimeClickAt = 0;
       selectCalendarDate(target.dataset.calendarDrop);
       render();
-    }, 400);
+    }, 300);
   }));
   document.querySelectorAll("[data-calendar-add]").forEach((button) => button.addEventListener("click", () => {
     openTaskDialog({ date: button.dataset.calendarAdd || state.selectedCalendarDate, status: "未完成", reminder_minutes: "0" });
@@ -1472,6 +1497,16 @@ function deleteArchive(archiveId) {
   saveWorkspace(); showToast("封存已永久刪除"); render();
 }
 
+function refreshWorkspace() {
+  if (CLOUD_MODE) {
+    loadCloudWorkspace().then(() => { showToast("已重新整理雲端資料"); render(); }).catch((error) => showToast(error.message));
+  } else {
+    state.workspace = loadWorkspace();
+    showToast("已重新整理");
+    render();
+  }
+}
+
 function setupGlobalEvents() {
   $("#importButton").addEventListener("click", openImporter);
   $("#exportButton").addEventListener("click", exportWorkspace);
@@ -1492,15 +1527,7 @@ function setupGlobalEvents() {
     if ($("#saveIndicator")) $("#saveIndicator").textContent = "正在恢復同步...";
     saveCloudWorkspace().then(() => showToast("已恢復連線並同步"));
   });
-  $("#refreshButton").addEventListener("click", () => {
-    if (CLOUD_MODE) {
-      loadCloudWorkspace().then(() => { showToast("已重新整理雲端資料"); render(); }).catch((error) => showToast(error.message));
-    } else {
-      state.workspace = loadWorkspace();
-      showToast("已重新整理");
-      render();
-    }
-  });
+  $("#refreshButton").addEventListener("click", refreshWorkspace);
   const logoutButton = $("#logoutButton");
   if (CLOUD_MODE) {
     logoutButton.hidden = false;
@@ -1674,6 +1701,7 @@ function saveProjectFromForm(event) {
   }
   addHistory(`${existing ? "更新" : "建立"}課程專案「${course}」`, project.id, "project");
   state.selectedProjectId = project.id;
+  state.projectMobileTab = "work";
   state.page = "projectDetail";
   saveWorkspace();
   closeModal();
@@ -1707,10 +1735,11 @@ function deleteProject(projectId) {
 
 function openTaskDialog(task = null, projectId = "") {
   const layer = $("#modalLayer");
-  const targetProjectId = projectId || task?.project_id || state.selectedProjectId;
+  const targetProjectId = projectId || task?.project_id || (state.page === "projectDetail" ? state.selectedProjectId : "");
+  const isPhoneTask = task?.task_type === TASK_TYPE_PHONE;
   layer.hidden = false;
   layer.innerHTML = `<div class="modal-card compact-modal" role="dialog" aria-modal="true">
-    <div class="modal-header"><h3>${task?.id ? "編輯工作" : "新增工作排程"}</h3><button class="icon-button" data-close-modal aria-label="關閉">×</button></div>
+    <div class="modal-header"><h3>${task?.id ? (isPhoneTask ? "編輯電話聯繫" : "編輯工作") : (isPhoneTask ? "新增電話聯繫" : "新增工作排程")}</h3><button class="icon-button" data-close-modal aria-label="關閉">×</button></div>
     <form class="form-grid" id="taskForm">
       <label><span>工作內容</span><input class="search-input" name="title" required value="${escapeHTML(task?.title || "")}"></label>
       <div class="two-col"><label><span>日期</span><input class="search-input" type="date" name="date" value="${escapeHTML(task?.date || todayISO())}" required></label><label><span>時間</span><input class="search-input" type="time" name="time" value="${escapeHTML(task?.time || "")}"></label></div>
@@ -1721,7 +1750,7 @@ function openTaskDialog(task = null, projectId = "") {
       <label><span>重複</span><select class="select" name="recurrence">${[["none", "不重複"], ["daily", "每天"], ["weekly", "每週"], ["monthly", "每月"]].map(([value, label]) => `<option value="${value}" ${String(task?.recurrence || "none") === value ? "selected" : ""}>${label}</option>`).join("")}</select></label>
       <label><span>所屬課程（選填）</span><select class="select" name="project_id"><option value="">我的工作</option>${state.workspace.projects.filter((project) => !projectFinished(project)).map((project) => `<option value="${escapeHTML(project.id)}" ${targetProjectId === project.id ? "selected" : ""}>${escapeHTML(project.course || project.teacher || "未命名專案")}</option>`).join("")}</select></label>
       <label><span>備註（選填）</span><textarea class="textarea" name="note" rows="3" placeholder="補充資訊、網址或處理方式">${escapeHTML(task?.note || "")}</textarea></label>
-      <input type="hidden" name="task_id" value="${escapeHTML(task?.id || "")}"><input type="hidden" name="check_item_id" value="${escapeHTML(task?.linked_checklist_item_id || "")}">
+      <input type="hidden" name="task_id" value="${escapeHTML(task?.id || "")}"><input type="hidden" name="check_item_id" value="${escapeHTML(task?.linked_checklist_item_id || "")}"><input type="hidden" name="task_type" value="${escapeHTML(task?.task_type || "一般工作")}">
       <div class="modal-actions split-actions">${task?.id ? `<button type="button" class="danger-button" data-task-delete="${escapeHTML(task.id)}">刪除工作</button>` : `<span></span>`}<div class="toolbar"><button type="button" class="ghost-button" data-close-modal>取消</button><button class="primary-button">儲存工作</button></div></div>
     </form></div>`;
   layer.querySelectorAll("[data-close-modal]").forEach((button) => button.addEventListener("click", closeModal));
@@ -1733,9 +1762,10 @@ function saveTaskFromForm(event) {
   event.preventDefault();
   const form = new FormData(event.currentTarget);
   const taskId = String(form.get("task_id") || "");
-  const task = state.workspace.tasks.find((item) => item.id === taskId) || { id: uid("task"), project_id: String(form.get("project_id") || ""), created_at: new Date().toISOString().slice(0, 19), task_type: "一般工作" };
+  const taskType = String(form.get("task_type") || "一般工作");
+  const task = state.workspace.tasks.find((item) => item.id === taskId) || { id: uid("task"), project_id: String(form.get("project_id") || ""), created_at: new Date().toISOString().slice(0, 19), task_type: taskType, phone_status: taskType === TASK_TYPE_PHONE ? "待聯繫" : "" };
   const wasCompleted = task.status === STATUS_COMPLETED;
-  Object.assign(task, { title: String(form.get("title") || "").trim(), date: String(form.get("date") || ""), time: String(form.get("time") || ""), status: String(form.get("status") || "未完成"), project_id: String(form.get("project_id") || ""), reminder_minutes: String(form.get("reminder_minutes") || ""), recurrence: String(form.get("recurrence") || "none"), recurrence_series_id: task.recurrence_series_id || task.id, note: String(form.get("note") || "").trim(), linked_checklist_item_id: String(form.get("check_item_id") || task.linked_checklist_item_id || ""), updated_at: new Date().toISOString() });
+  Object.assign(task, { title: String(form.get("title") || "").trim(), date: String(form.get("date") || ""), time: String(form.get("time") || ""), status: String(form.get("status") || "未完成"), project_id: String(form.get("project_id") || ""), task_type: taskType, reminder_minutes: String(form.get("reminder_minutes") || ""), recurrence: String(form.get("recurrence") || "none"), recurrence_series_id: task.recurrence_series_id || task.id, note: String(form.get("note") || "").trim(), linked_checklist_item_id: String(form.get("check_item_id") || task.linked_checklist_item_id || ""), updated_at: new Date().toISOString() });
   if (!taskId) state.workspace.tasks.push(task);
   if (!wasCompleted && task.status === STATUS_COMPLETED) completeTask(task);
   if (task.linked_checklist_item_id) {
