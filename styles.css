@@ -501,6 +501,14 @@ button {
   font-size: 12px;
 }
 
+.task-note {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
 .pill {
   display: inline-flex;
   align-items: center;
@@ -1065,6 +1073,34 @@ button:disabled {
   border-radius: 8px;
 }
 
+.calendar-filters {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) 120px auto;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.calendar-filters .search-input {
+  width: 100%;
+}
+
+.calendar-add-button {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: #fff;
+}
+
+.archive-controls {
+  display: grid;
+  grid-template-columns: minmax(100px, 150px) auto;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.archive-controls .search-input {
+  width: 100%;
+}
+
 .calendar-grid {
   min-width: 0;
   display: grid;
@@ -1404,6 +1440,10 @@ button.day-cell:hover {
     justify-content: flex-end;
   }
 
+  .quick-add-button {
+    order: -1;
+  }
+
   .primary-button,
   .ghost-button,
   .small-button,
@@ -1541,6 +1581,16 @@ button.day-cell:hover {
     width: 100%;
   }
 
+  .calendar-filters {
+    grid-template-columns: minmax(0, 1fr) 94px;
+    gap: 5px;
+    margin-bottom: 7px;
+  }
+
+  .calendar-filters .primary-button {
+    grid-column: 1 / -1;
+  }
+
   .calendar-layout {
     gap: 10px;
   }
@@ -1585,6 +1635,10 @@ button.day-cell:hover {
   .goal-setting-row {
     grid-template-columns: 1fr 90px;
     gap: 6px;
+  }
+
+  .archive-controls {
+    grid-template-columns: 88px minmax(0, 1fr);
   }
 
   .goal-setting-row .primary-button {
@@ -1662,6 +1716,17 @@ button.day-cell:hover {
     gap: 2px;
     padding: 5px 2px;
     font-size: 9px;
+  }
+
+  .modal-card {
+    width: calc(100vw - 16px);
+    max-height: calc(100dvh - 20px);
+    padding: 12px;
+  }
+
+  .form-grid label {
+    gap: 4px;
+    font-size: 12px;
   }
 
   .bottom-nav .active {

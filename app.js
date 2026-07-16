@@ -32,6 +32,8 @@ let state = {
   projectRoleFilter: "全部",
   projectModeFilter: "全部類型",
   hideCompletedProjects: true,
+  calendarQuery: "",
+  calendarStatusFilter: "全部",
   selectedProjectId: "",
   selectedTaskIds: new Set(),
   expandedCompletedProjectIds: new Set(),
@@ -699,17 +701,24 @@ function taskList(tasks, emptyText, phoneMode = false) {
               <span>${humanDate(task.date)}</span>
               ${task.time ? `<span>${escapeHTML(task.time)}</span>` : ""}
               <span>${escapeHTML(project ? project.course : "我的工作")}</span>
+              ${task.reminder_minutes !== undefined && task.reminder_minutes !== "" ? `<span>${escapeHTML(reminderLabel(task.reminder_minutes))}</span>` : ""}
             </div>
+            ${task.note ? `<p class="task-note">${escapeHTML(task.note)}</p>` : ""}
           </div>
           ${pill(phoneMode ? task.phone_status || "待聯繫" : task.status || "未完成", statusTone)}
         </div>
         <div class="toolbar">
+          ${phoneMode ? "" : `<button class="small-button" data-task-edit="${escapeHTML(task.id)}">編輯</button>`}
           ${completed ? "" : `<button class="small-button" data-complete="${escapeHTML(task.id)}">完成</button>`}
           ${phoneMode ? `<button class="small-button" data-phone="${escapeHTML(task.id)}" data-status="已聯繫">已聯繫</button><button class="small-button" data-phone="${escapeHTML(task.id)}" data-status="待回覆">待回覆</button>` : ""}
         </div>
       </article>
     `;
   }).join("");
+}
+
+function reminderLabel(value) {
+  return ({ "0": "準時提醒", "10": "提前 10 分鐘", "60": "提前 1 小時", "1440": "提前 1 天" })[String(value)] || "已設定提醒";
 }
 
 function renderCalendar() {
@@ -725,12 +734,21 @@ function renderCalendar() {
     cells.push(new Date(year, month, index - startOffset + 1));
   }
   const days = ["日", "一", "二", "三", "四", "五", "六"];
-  const monthTasks = state.workspace.tasks.filter((task) => task.date && task.date.startsWith(displayedMonth)).sort(sortTasks);
+  const query = state.calendarQuery.trim().toLowerCase();
+  const matchesCalendarFilter = (task) => {
+    const project = projectById(task.project_id);
+    const haystack = `${task.title || ""} ${task.note || ""} ${project?.course || ""}`.toLowerCase();
+    const statusMatches = state.calendarStatusFilter === "全部"
+      || (state.calendarStatusFilter === "未完成" && task.status !== STATUS_COMPLETED)
+      || (state.calendarStatusFilter === "已完成" && task.status === STATUS_COMPLETED);
+    return (!query || haystack.includes(query)) && statusMatches;
+  };
+  const monthTasks = state.workspace.tasks.filter((task) => task.date && task.date.startsWith(displayedMonth) && matchesCalendarFilter(task)).sort(sortTasks);
   if (!state.selectedCalendarDate?.startsWith(displayedMonth)) {
     state.selectedCalendarDate = dateISO(first);
   }
   const selectedDate = state.selectedCalendarDate;
-  const selectedTasks = state.workspace.tasks.filter((task) => task.date === selectedDate).sort(sortTasks);
+  const selectedTasks = state.workspace.tasks.filter((task) => task.date === selectedDate && matchesCalendarFilter(task)).sort(sortTasks);
   const selectedDateLabel = new Intl.DateTimeFormat("zh-Hant", {
     month: "long",
     day: "numeric",
@@ -746,6 +764,13 @@ function renderCalendar() {
           <button class="small-button" data-month="1">下個月</button>
         </div>
       </div>
+      <div class="calendar-filters">
+        <input class="search-input" id="calendarSearch" value="${escapeHTML(state.calendarQuery)}" placeholder="搜尋工作、課程或備註">
+        <select class="select" id="calendarStatusFilter" aria-label="工作狀態篩選">
+          ${["全部", "未完成", "已完成"].map((value) => `<option ${state.calendarStatusFilter === value ? "selected" : ""}>${value}</option>`).join("")}
+        </select>
+        <button class="primary-button" data-calendar-add="${escapeHTML(selectedDate)}">新增工作</button>
+      </div>
       <div class="grid calendar-layout">
         <div class="calendar-grid">
           ${days.map((day) => `<div class="day-name">${day}</div>`).join("")}
@@ -757,7 +782,7 @@ function renderCalendar() {
               <p class="calendar-day-kicker">${selectedDate === todayISO() ? "今日工作項目" : "所選日期工作"}</p>
               <h4>${escapeHTML(selectedDateLabel)}</h4>
             </div>
-            ${pill(`${selectedTasks.length} 件`, selectedTasks.length ? "green" : "gray")}
+            <div class="toolbar">${pill(`${selectedTasks.length} 件`, selectedTasks.length ? "green" : "gray")}<button class="icon-button calendar-add-button" data-calendar-add="${escapeHTML(selectedDate)}" aria-label="新增這一天的工作" title="新增工作">＋</button></div>
           </div>
           <div class="list">${taskList(selectedTasks, "這一天沒有排程工作。")}</div>
         </aside>
@@ -768,11 +793,19 @@ function renderCalendar() {
 
 function renderDayCell(date, displayedMonth) {
   const iso = dateISO(date);
-  const tasks = state.workspace.tasks.filter((task) => task.date === iso).sort(sortTasks);
+  const query = state.calendarQuery.trim().toLowerCase();
+  const tasks = state.workspace.tasks.filter((task) => {
+    if (task.date !== iso) return false;
+    const project = projectById(task.project_id);
+    const statusMatches = state.calendarStatusFilter === "全部"
+      || (state.calendarStatusFilter === "未完成" && task.status !== STATUS_COMPLETED)
+      || (state.calendarStatusFilter === "已完成" && task.status === STATUS_COMPLETED);
+    return statusMatches && (!query || `${task.title || ""} ${task.note || ""} ${project?.course || ""}`.toLowerCase().includes(query));
+  }).sort(sortTasks);
   const selected = iso === state.selectedCalendarDate;
   const outside = date.getMonth() !== displayedMonth;
   return `
-    <button type="button" class="day-cell ${outside ? "outside-month" : ""} ${iso === todayISO() ? "today" : ""} ${selected ? "selected" : ""} ${tasks.length ? "has-tasks" : ""}" data-calendar-date="${iso}" aria-label="${date.getMonth() + 1} 月 ${date.getDate()} 日，${tasks.length} 件工作" aria-pressed="${selected}">
+    <button type="button" class="day-cell ${outside ? "outside-month" : ""} ${iso === todayISO() ? "today" : ""} ${selected ? "selected" : ""} ${tasks.length ? "has-tasks" : ""}" data-calendar-date="${iso}" aria-label="${date.getMonth() + 1} 月 ${date.getDate()} 日，${tasks.length} 件工作；點擊新增" aria-pressed="${selected}">
       <div class="day-number"><span>${date.getDate()}</span></div>
       ${tasks.slice(0, 3).map((task) => `<span class="calendar-event ${task.status === STATUS_COMPLETED ? "completed" : ""}"><b>${escapeHTML(task.time || "全天")}</b>${escapeHTML(task.title || "未命名工作")}</span>`).join("")}
       ${tasks.length > 3 ? `<span class="calendar-more">另有 ${tasks.length - 3} 件</span>` : ""}
@@ -806,7 +839,7 @@ function renderSettings() {
   return `
     <section class="card">
       <div class="card-header">
-        <div><h3>資料設定</h3><p class="muted">目前資料保存在這個瀏覽器</p></div>
+        <div><h3>資料設定</h3><p class="muted">${CLOUD_MODE ? "資料會自動同步至雲端" : "目前資料保存在這個瀏覽器"}</p></div>
       </div>
       <div class="grid dashboard-grid">
         <form class="import-panel goal-settings-panel" id="goalSettingsForm">
@@ -832,7 +865,15 @@ function renderSettings() {
           <div class="toolbar" style="margin-top:12px">
             <button class="primary-button" data-import>選擇 JSON</button>
             <button class="ghost-button" data-export>匯出目前資料</button>
-            <button class="danger-button" data-clear>清除瀏覽器資料</button>
+            <button class="ghost-button" data-export-csv>匯出工作 CSV</button>
+          </div>
+        </div>
+        <div class="import-panel archive-panel">
+          <h4>年度備份與封存</h4>
+          <p class="muted">先下載完整 JSON，再清除指定年度已完成的工作與已完成專案；設定與進行中資料會保留。</p>
+          <div class="archive-controls">
+            <input class="search-input" id="archiveYear" type="number" min="2000" max="2100" value="${new Date().getFullYear() - 1}" aria-label="封存年度">
+            <button class="danger-button" data-archive-year>備份並封存</button>
           </div>
         </div>
         <div class="card">
@@ -863,6 +904,17 @@ function bindContentEvents() {
   const hideCompleted = $("[data-hide-completed]");
   if (hideCompleted) hideCompleted.addEventListener("click", () => {
     state.hideCompletedProjects = !state.hideCompletedProjects;
+    render();
+  });
+  const calendarSearch = $("#calendarSearch");
+  if (calendarSearch) calendarSearch.addEventListener("input", (event) => {
+    state.calendarQuery = event.target.value;
+    render();
+    $("#calendarSearch")?.focus();
+  });
+  const calendarStatusFilter = $("#calendarStatusFilter");
+  if (calendarStatusFilter) calendarStatusFilter.addEventListener("change", (event) => {
+    state.calendarStatusFilter = event.target.value;
     render();
   });
 
@@ -974,11 +1026,17 @@ function bindContentEvents() {
       const selected = parseDate(state.selectedCalendarDate);
       if (selected) state.selectedMonth = new Date(selected.getFullYear(), selected.getMonth(), 1);
       render();
+      openTaskDialog({ date: state.selectedCalendarDate, status: "未完成", reminder_minutes: "0" });
     });
   });
+  document.querySelectorAll("[data-calendar-add]").forEach((button) => button.addEventListener("click", () => {
+    openTaskDialog({ date: button.dataset.calendarAdd || state.selectedCalendarDate, status: "未完成", reminder_minutes: "0" });
+  }));
 
   document.querySelectorAll("[data-import]").forEach((button) => button.addEventListener("click", openImporter));
   document.querySelectorAll("[data-export]").forEach((button) => button.addEventListener("click", exportWorkspace));
+  document.querySelectorAll("[data-export-csv]").forEach((button) => button.addEventListener("click", exportTasksCSV));
+  document.querySelectorAll("[data-archive-year]").forEach((button) => button.addEventListener("click", archiveYear));
   document.querySelectorAll("[data-clear]").forEach((button) => {
     button.addEventListener("click", () => {
       if (!confirm("確定清除這個瀏覽器中的網頁版資料？")) return;
@@ -1005,9 +1063,60 @@ function exportWorkspace() {
   showToast("已匯出 JSON 備份");
 }
 
+function csvCell(value) {
+  return `"${String(value ?? "").replaceAll('"', '""')}"`;
+}
+
+function exportTasksCSV() {
+  const header = ["日期", "時間", "工作內容", "課程專案", "狀態", "提醒分鐘", "備註"];
+  const rows = state.workspace.tasks.slice().sort(sortTasks).map((task) => {
+    const project = projectById(task.project_id);
+    return [task.date, task.time, task.title, project?.course || "", task.status, task.reminder_minutes ?? "", task.note || ""];
+  });
+  const csv = `\ufeff${[header, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n")}`;
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `老師專案工作_${todayISO()}.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
+  showToast("已匯出工作 CSV");
+}
+
+function archiveYear() {
+  const year = Number($("#archiveYear")?.value);
+  if (!Number.isInteger(year) || year < 2000 || year > 2100) {
+    showToast("請輸入正確的封存年度");
+    return;
+  }
+  const yearPrefix = `${year}-`;
+  const completedTaskIds = new Set(state.workspace.tasks
+    .filter((task) => task.status === STATUS_COMPLETED && String(task.date || task.completed_at || "").startsWith(yearPrefix))
+    .map((task) => task.id));
+  const completedProjectIds = new Set(state.workspace.projects
+    .filter((project) => projectFinished(project) && String(project.target_month || project.target_date || "").startsWith(String(year)))
+    .map((project) => project.id));
+  if (!completedTaskIds.size && !completedProjectIds.size) {
+    showToast(`${year} 年沒有可封存的已完成資料`);
+    return;
+  }
+  if (!confirm(`將先下載完整備份，再移除 ${year} 年已完成工作 ${completedTaskIds.size} 件、已完成專案 ${completedProjectIds.size} 件。確定繼續？`)) return;
+  exportWorkspace();
+  state.workspace.tasks = state.workspace.tasks.filter((task) => !completedTaskIds.has(task.id) && !completedProjectIds.has(task.project_id));
+  state.workspace.projects = state.workspace.projects.filter((project) => !completedProjectIds.has(project.id));
+  state.workspace.checklists = state.workspace.checklists.filter((group) => !completedProjectIds.has(group.project_id));
+  state.workspace.progress_logs = state.workspace.progress_logs.filter((item) => !completedProjectIds.has(item.project_id));
+  state.workspace.project_messages = state.workspace.project_messages.filter((item) => !completedProjectIds.has(item.project_id));
+  state.workspace.history = state.workspace.history.filter((item) => !completedProjectIds.has(item.project_id));
+  saveWorkspace();
+  showToast(`${year} 年已完成資料已封存`);
+  render();
+}
+
 function setupGlobalEvents() {
   $("#importButton").addEventListener("click", openImporter);
   $("#exportButton").addEventListener("click", exportWorkspace);
+  $("#quickAddButton")?.addEventListener("click", () => openTaskDialog({ date: todayISO(), status: "未完成", reminder_minutes: "0" }));
   $("#refreshButton").addEventListener("click", () => {
     if (CLOUD_MODE) {
       loadCloudWorkspace().then(() => { showToast("已重新整理雲端資料"); render(); }).catch((error) => showToast(error.message));
@@ -1217,8 +1326,13 @@ function openTaskDialog(task = null, projectId = "") {
     <form class="form-grid" id="taskForm">
       <label><span>工作內容</span><input class="search-input" name="title" required value="${escapeHTML(task?.title || "")}"></label>
       <div class="two-col"><label><span>日期</span><input class="search-input" type="date" name="date" value="${escapeHTML(task?.date || todayISO())}" required></label><label><span>時間</span><input class="search-input" type="time" name="time" value="${escapeHTML(task?.time || "")}"></label></div>
-      <label><span>狀態</span><select class="select" name="status">${["未完成", "等待中", "已完成"].map((value) => `<option ${String(task?.status || "未完成") === value ? "selected" : ""}>${value}</option>`).join("")}</select></label>
-      <input type="hidden" name="task_id" value="${escapeHTML(task?.id || "")}"><input type="hidden" name="project_id" value="${escapeHTML(targetProjectId)}"><input type="hidden" name="check_item_id" value="${escapeHTML(task?.linked_checklist_item_id || "")}">
+      <div class="two-col">
+        <label><span>狀態</span><select class="select" name="status">${["未完成", "等待中", "已完成"].map((value) => `<option ${String(task?.status || "未完成") === value ? "selected" : ""}>${value}</option>`).join("")}</select></label>
+        <label><span>提醒</span><select class="select" name="reminder_minutes">${[["", "不提醒"], ["0", "準時提醒"], ["10", "提前 10 分鐘"], ["60", "提前 1 小時"], ["1440", "提前 1 天"]].map(([value, label]) => `<option value="${value}" ${String(task?.reminder_minutes ?? "") === value ? "selected" : ""}>${label}</option>`).join("")}</select></label>
+      </div>
+      <label><span>所屬課程（選填）</span><select class="select" name="project_id"><option value="">我的工作</option>${state.workspace.projects.filter((project) => !projectFinished(project)).map((project) => `<option value="${escapeHTML(project.id)}" ${targetProjectId === project.id ? "selected" : ""}>${escapeHTML(project.course || project.teacher || "未命名專案")}</option>`).join("")}</select></label>
+      <label><span>備註（選填）</span><textarea class="textarea" name="note" rows="3" placeholder="補充資訊、網址或處理方式">${escapeHTML(task?.note || "")}</textarea></label>
+      <input type="hidden" name="task_id" value="${escapeHTML(task?.id || "")}"><input type="hidden" name="check_item_id" value="${escapeHTML(task?.linked_checklist_item_id || "")}">
       <div class="modal-actions"><button type="button" class="ghost-button" data-close-modal>取消</button><button class="primary-button">儲存工作</button></div>
     </form></div>`;
   layer.querySelectorAll("[data-close-modal]").forEach((button) => button.addEventListener("click", closeModal));
@@ -1230,7 +1344,7 @@ function saveTaskFromForm(event) {
   const form = new FormData(event.currentTarget);
   const taskId = String(form.get("task_id") || "");
   const task = state.workspace.tasks.find((item) => item.id === taskId) || { id: uid("task"), project_id: String(form.get("project_id") || ""), created_at: new Date().toISOString().slice(0, 19), task_type: "一般工作" };
-  Object.assign(task, { title: String(form.get("title") || "").trim(), date: String(form.get("date") || ""), time: String(form.get("time") || ""), status: String(form.get("status") || "未完成"), linked_checklist_item_id: String(form.get("check_item_id") || task.linked_checklist_item_id || "") });
+  Object.assign(task, { title: String(form.get("title") || "").trim(), date: String(form.get("date") || ""), time: String(form.get("time") || ""), status: String(form.get("status") || "未完成"), project_id: String(form.get("project_id") || ""), reminder_minutes: String(form.get("reminder_minutes") || ""), note: String(form.get("note") || "").trim(), linked_checklist_item_id: String(form.get("check_item_id") || task.linked_checklist_item_id || "") });
   if (!taskId) state.workspace.tasks.push(task);
   if (task.linked_checklist_item_id) {
     state.workspace.checklists.forEach((group) => (group.items || []).forEach((item) => { if (item.id === task.linked_checklist_item_id) item.linked_task_id = task.id; }));
