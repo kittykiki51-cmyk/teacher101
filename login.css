@@ -1,11 +1,11 @@
 :root {
-  --bg: #f5f6f8;
+  --bg: #f3f5f8;
   --surface: #ffffff;
-  --border: #e4e7ec;
-  --text: #252831;
-  --muted: #747b89;
-  --primary: #5568e8;
-  --primary-hover: #4355cf;
+  --border: #e1e5eb;
+  --text: #20242d;
+  --muted: #697180;
+  --primary: #315bd6;
+  --primary-hover: #2448b5;
   --red: #c45462;
 }
 
@@ -36,7 +36,7 @@ input { font: inherit; }
   border-radius: 8px;
   background: var(--surface);
   padding: 32px 34px;
-  box-shadow: 0 8px 24px rgba(24, 29, 39, 0.08);
+  box-shadow: 0 12px 30px rgba(20, 27, 40, 0.07);
 }
 
 .login-heading { margin-bottom: 24px; }
