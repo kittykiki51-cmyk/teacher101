@@ -867,7 +867,7 @@ function renderMonthCalendar(anchor) {
 function renderDayCell(date, displayedMonth) {
   const iso = dateISO(date);
   const tasks = tasksOnDate(iso);
-  return `<div class="day-cell ${date.getMonth() !== displayedMonth ? "outside-month" : ""} ${iso === todayISO() ? "today" : ""} ${iso === state.selectedCalendarDate ? "selected" : ""} ${tasks.length ? "has-tasks" : ""}" data-calendar-date="${iso}" data-calendar-drop="${iso}" role="button" tabindex="0">
+  return `<div class="day-cell ${date.getMonth() !== displayedMonth ? "outside-month" : ""} ${iso === todayISO() ? "today" : ""} ${iso === state.selectedCalendarDate ? "selected" : ""} ${tasks.length ? "has-tasks" : ""}" data-calendar-date="${iso}" data-calendar-drop="${iso}" role="button" tabindex="0" title="單擊選取，雙擊新增工作">
     <div class="day-number"><span>${date.getDate()}</span></div>
     ${tasks.slice(0, 3).map((task) => calendarEvent(task)).join("")}${tasks.length > 3 ? `<span class="calendar-more">另有 ${tasks.length - 3} 件</span>` : ""}
   </div>`;
@@ -888,7 +888,7 @@ function weekRangeLabel(date) {
 function renderWeekCalendar(anchor) {
   const start = weekStart(anchor);
   const dates = Array.from({ length: 7 }, (_, index) => { const date = new Date(start); date.setDate(start.getDate() + index); return date; });
-  return `<div class="week-calendar">${dates.map((date) => { const iso = dateISO(date); const tasks = tasksOnDate(iso); return `<section class="week-day ${iso === todayISO() ? "today" : ""}" data-calendar-date="${iso}" data-calendar-drop="${iso}"><header><span>${["日", "一", "二", "三", "四", "五", "六"][date.getDay()]}</span><strong>${date.getDate()}</strong></header><div class="week-events">${tasks.map((task) => calendarEvent(task, "week-event")).join("") || `<span class="week-empty">＋</span>`}</div></section>`; }).join("")}</div>`;
+  return `<div class="week-calendar">${dates.map((date) => { const iso = dateISO(date); const tasks = tasksOnDate(iso); return `<section class="week-day ${iso === todayISO() ? "today" : ""}" data-calendar-date="${iso}" data-calendar-drop="${iso}" title="單擊選取，雙擊新增工作"><header><span>${["日", "一", "二", "三", "四", "五", "六"][date.getDay()]}</span><strong>${date.getDate()}</strong></header><div class="week-events">${tasks.map((task) => calendarEvent(task, "week-event")).join("") || `<span class="week-empty">＋</span>`}</div></section>`; }).join("")}</div>`;
 }
 
 function renderDayCalendar(anchor) {
@@ -896,7 +896,7 @@ function renderDayCalendar(anchor) {
   const tasks = tasksOnDate(iso);
   const allDay = tasks.filter((task) => !task.time);
   const hours = Array.from({ length: 16 }, (_, index) => index + 7);
-  return `<div class="day-agenda"><div class="all-day-row" data-calendar-drop="${iso}"><strong>全天</strong><div>${allDay.map((task) => calendarEvent(task, "agenda-event")).join("") || `<span class="muted">沒有全天工作</span>`}</div></div>${hours.map((hour) => { const prefix = String(hour).padStart(2, "0"); const hourTasks = tasks.filter((task) => String(task.time || "").startsWith(prefix)); return `<div class="hour-row" data-calendar-drop="${iso}" data-drop-time="${prefix}:00"><time>${prefix}:00</time><div>${hourTasks.map((task) => calendarEvent(task, "agenda-event")).join("")}</div></div>`; }).join("")}</div>`;
+  return `<div class="day-agenda"><div class="all-day-row" data-calendar-drop="${iso}"><strong>全天</strong><div>${allDay.map((task) => calendarEvent(task, "agenda-event")).join("") || `<span class="muted">沒有全天工作</span>`}</div></div>${hours.map((hour) => { const prefix = String(hour).padStart(2, "0"); const hourTasks = tasks.filter((task) => String(task.time || "").startsWith(prefix)); return `<div class="hour-row" data-calendar-drop="${iso}" data-drop-time="${prefix}:00" title="雙擊新增工作"><time>${prefix}:00</time><div>${hourTasks.map((task) => calendarEvent(task, "agenda-event")).join("")}</div></div>`; }).join("")}</div>`;
 }
 
 function renderPhone() {
@@ -1125,14 +1125,36 @@ function bindContentEvents() {
     });
   });
 
+  let calendarSelectionTimer = null;
+  let lastCalendarTarget = null;
+  let lastCalendarClickAt = 0;
+  const selectCalendarDate = (iso) => {
+    state.selectedCalendarDate = iso;
+    const selected = parseDate(state.selectedCalendarDate);
+    if (selected) state.selectedMonth = new Date(selected.getFullYear(), selected.getMonth(), 1);
+  };
   document.querySelectorAll("[data-calendar-date]").forEach((button) => {
     button.addEventListener("click", (event) => {
       if (event.target.closest("[data-calendar-task]")) return;
-      state.selectedCalendarDate = button.dataset.calendarDate;
-      const selected = parseDate(state.selectedCalendarDate);
-      if (selected) state.selectedMonth = new Date(selected.getFullYear(), selected.getMonth(), 1);
-      render();
-      openTaskDialog({ date: state.selectedCalendarDate, status: "未完成", reminder_minutes: "0" });
+      const clickedAt = Date.now();
+      const isDoubleActivation = lastCalendarTarget === button && clickedAt - lastCalendarClickAt <= 400;
+      window.clearTimeout(calendarSelectionTimer);
+      if (isDoubleActivation) {
+        lastCalendarTarget = null;
+        lastCalendarClickAt = 0;
+        selectCalendarDate(button.dataset.calendarDate);
+        render();
+        openTaskDialog({ date: state.selectedCalendarDate, status: "未完成", reminder_minutes: "0" });
+        return;
+      }
+      lastCalendarTarget = button;
+      lastCalendarClickAt = clickedAt;
+      calendarSelectionTimer = window.setTimeout(() => {
+        lastCalendarTarget = null;
+        lastCalendarClickAt = 0;
+        selectCalendarDate(button.dataset.calendarDate);
+        render();
+      }, 400);
     });
   });
   document.querySelectorAll("[data-calendar-drop]").forEach((target) => {
@@ -1149,9 +1171,19 @@ function bindContentEvents() {
       saveWorkspace(); showToast("工作時間已調整"); render();
     });
   });
+  let lastTimeTarget = null;
+  let lastTimeClickAt = 0;
   document.querySelectorAll("[data-drop-time]").forEach((target) => target.addEventListener("click", (event) => {
     if (event.target.closest("[data-calendar-task]")) return;
-    openTaskDialog({ date: target.dataset.calendarDrop, time: target.dataset.dropTime, status: "未完成", reminder_minutes: "0" });
+    const clickedAt = Date.now();
+    if (lastTimeTarget === target && clickedAt - lastTimeClickAt <= 400) {
+      lastTimeTarget = null;
+      lastTimeClickAt = 0;
+      openTaskDialog({ date: target.dataset.calendarDrop, time: target.dataset.dropTime, status: "未完成", reminder_minutes: "0" });
+      return;
+    }
+    lastTimeTarget = target;
+    lastTimeClickAt = clickedAt;
   }));
   document.querySelectorAll("[data-calendar-add]").forEach((button) => button.addEventListener("click", () => {
     openTaskDialog({ date: button.dataset.calendarAdd || state.selectedCalendarDate, status: "未完成", reminder_minutes: "0" });
