@@ -331,14 +331,24 @@ def push_subscribe() -> Any:
 
 
 def due_tasks(workspace: dict[str, Any], now: datetime) -> list[dict[str, Any]]:
-    today = now.strftime("%Y-%m-%d")
-    current_time = now.strftime("%H:%M")
-    return [
-        task for task in workspace.get("tasks", [])
-        if task.get("status") != "已完成"
-        and task.get("date") == today
-        and str(task.get("time", ""))[:5] == current_time
-    ]
+    due: list[dict[str, Any]] = []
+    current_minute = now.replace(second=0, microsecond=0)
+    for task in workspace.get("tasks", []):
+        if task.get("status") == "已完成" or not task.get("date") or not task.get("time"):
+            continue
+        reminder = task.get("reminder_minutes")
+        if reminder in {None, ""}:
+            continue
+        try:
+            scheduled = datetime.strptime(
+                f"{str(task['date'])[:10]} {str(task['time'])[:5]}", "%Y-%m-%d %H:%M"
+            ).replace(tzinfo=APP_TIMEZONE)
+            reminder_at = scheduled - timedelta(minutes=max(0, int(reminder)))
+        except (TypeError, ValueError):
+            continue
+        if reminder_at == current_minute:
+            due.append(task)
+    return due
 
 
 def send_push_notifications() -> None:
@@ -358,7 +368,7 @@ def send_push_notifications() -> None:
         subscriptions = connection.execute("SELECT endpoint, subscription FROM push_subscriptions").fetchall()
         projects = {project.get("id"): project for project in workspace.get("projects", [])}
         for task in due_tasks(workspace, now):
-            key = f"{task.get('id')}:{task.get('date')}:{str(task.get('time', ''))[:5]}"
+            key = f"{task.get('id')}:{task.get('date')}:{str(task.get('time', ''))[:5]}:{task.get('reminder_minutes', '')}"
             if connection.execute("SELECT 1 FROM sent_notifications WHERE notification_key = ?", (key,)).fetchone():
                 continue
             project = projects.get(task.get("project_id"), {})
