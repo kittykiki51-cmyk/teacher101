@@ -87,9 +87,27 @@ function saveWorkspace() {
   cloudSaveTimer = window.setTimeout(saveCloudWorkspace, 450);
 }
 
+async function clearBrowserPrivateData() {
+  localStorage.removeItem(OFFLINE_CACHE_KEY);
+  localStorage.removeItem(STORAGE_KEY);
+  try {
+    if ("caches" in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.filter((key) => key.startsWith("teacher-operations-")).map((key) => caches.delete(key)));
+    }
+    if ("serviceWorker" in navigator) {
+      const registration = await navigator.serviceWorker.getRegistration("/");
+      if (registration) await registration.unregister();
+    }
+  } catch {
+    // Local cleanup should not prevent logout or session-expiry redirects.
+  }
+}
+
 async function apiFetch(url, options = {}) {
   const response = await fetch(url, options);
   if (response.status === 401) {
+    await clearBrowserPrivateData();
     window.location.replace("/login");
     throw new Error("登入已過期");
   }
@@ -297,6 +315,17 @@ function escapeHTML(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function validExternalUrl(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  try {
+    const url = new URL(raw);
+    return url.protocol === "https:" || url.protocol === "http:" ? url.href : "";
+  } catch {
+    return "";
+  }
 }
 
 function pill(label, tone = "") {
@@ -1066,7 +1095,14 @@ function bindContentEvents() {
     render();
   });
   document.querySelectorAll("[data-message-delete]").forEach((button) => button.addEventListener("click", () => deleteProjectMessage(button.dataset.messageDelete)));
-  document.querySelectorAll("[data-open-url]").forEach((button) => button.addEventListener("click", () => window.open(button.dataset.openUrl, "_blank", "noopener")));
+  document.querySelectorAll("[data-open-url]").forEach((button) => button.addEventListener("click", () => {
+    const url = validExternalUrl(button.dataset.openUrl);
+    if (!url) {
+      showToast("基於安全考量，只能開啟 http 或 https 網址");
+      return;
+    }
+    window.open(url, "_blank", "noopener,noreferrer");
+  }));
 
   document.querySelectorAll("[data-complete]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -1467,6 +1503,14 @@ function saveProjectFromForm(event) {
     showToast("請確認日期格式");
     return;
   }
+  const rawCloudLink = String(form.get("cloud") || "").trim();
+  const rawCourseLink = String(form.get("course_link") || "").trim();
+  const cloudLink = validExternalUrl(rawCloudLink);
+  const courseLink = validExternalUrl(rawCourseLink);
+  if ((rawCloudLink && !cloudLink) || (rawCourseLink && !courseLink)) {
+    showToast("雲端資料夾與課程頁必須是 http 或 https 網址");
+    return;
+  }
 
   const stage = String(form.get("stage") || STAGE_NAMES[0]);
   const existing = projectById(String(form.get("project_id") || ""));
@@ -1482,7 +1526,7 @@ function saveProjectFromForm(event) {
     mode: form.get("mode") === "直播" ? "live" : "recorded",
     cooperation_status: String(form.get("cooperation") || "順利"),
     current_stage: stage,
-    links: { "雲端資料夾": String(form.get("cloud") || "").trim(), "課程頁": String(form.get("course_link") || "").trim() },
+    links: { "雲端資料夾": cloudLink, "課程頁": courseLink },
     stages: STAGE_NAMES.map((name, index) => ({ id: project.stages?.[index]?.id || uid("stage"), name, status: index < currentIndex ? STATUS_COMPLETED : index === currentIndex ? "進行中" : "未完成" })),
     last_update: todayISO(),
   });
@@ -1792,12 +1836,33 @@ async function testNotification() {
   }
 }
 
+async function removePushSubscription() {
+  if (!("serviceWorker" in navigator)) return;
+  try {
+    const registration = await navigator.serviceWorker.getRegistration("/");
+    const subscription = await registration?.pushManager.getSubscription();
+    if (!subscription) return;
+    if (cloudCsrfToken) {
+      await fetch("/api/push/subscribe", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": cloudCsrfToken },
+        body: JSON.stringify({ endpoint: subscription.endpoint }),
+      });
+    }
+    await subscription.unsubscribe();
+  } catch {
+    // Logout still clears the local worker and cache if push cleanup fails.
+  }
+}
+
 async function logoutCloud() {
   try {
     window.clearTimeout(cloudSaveTimer);
     await saveCloudWorkspace();
+    await removePushSubscription();
     await apiFetch("/api/logout", { method: "POST", headers: { "X-CSRF-Token": cloudCsrfToken } });
   } finally {
+    await clearBrowserPrivateData();
     window.location.replace("/login");
   }
 }
