@@ -1,12 +1,13 @@
 :root {
-  --bg: #f5f7f6;
+  --bg: #f7f9fb;
   --surface: #ffffff;
-  --border: #dfe5e2;
-  --text: #252b29;
-  --muted: #66706c;
-  --primary: #39736a;
-  --primary-hover: #2e5e57;
-  --red: #b85b61;
+  --border: #e1e7ec;
+  --text: #252a2e;
+  --muted: #69747c;
+  --primary: #a7d8f0;
+  --primary-hover: #8fcbe8;
+  --primary-contrast: #234353;
+  --red: #b85b63;
 }
 
 * { box-sizing: border-box; }
@@ -36,7 +37,7 @@ input { font: inherit; }
   border-radius: 8px;
   background: var(--surface);
   padding: 32px 34px;
-  box-shadow: 0 12px 30px rgba(27, 43, 38, 0.07);
+  box-shadow: 0 12px 30px rgba(26, 42, 53, 0.07);
 }
 
 .login-heading { margin-bottom: 24px; }
@@ -93,7 +94,7 @@ label {
   cursor: pointer;
 }
 
-.password-field button:hover { background: #f8faf9; }
+.password-field button:hover { background: #f8fafc; }
 
 .error-message {
   min-height: 22px;
@@ -107,7 +108,7 @@ label {
   border: 1px solid var(--primary);
   border-radius: 6px;
   background: var(--primary);
-  color: #fff;
+  color: var(--primary-contrast);
   font-weight: 700;
   cursor: pointer;
 }
