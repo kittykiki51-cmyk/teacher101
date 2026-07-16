@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hmac
 import base64
+import ipaddress
 import json
 import os
 import secrets
@@ -46,7 +47,12 @@ app.config.update(
     MAX_CONTENT_LENGTH=8 * 1024 * 1024,
 )
 
+LOGIN_WINDOW_SECONDS = 15 * 60
+LOGIN_ATTEMPT_LIMIT = 8
+MAX_TRACKED_LOGIN_CLIENTS = 2048
+
 login_attempts: dict[str, list[float]] = {}
+login_attempts_lock = threading.Lock()
 save_lock = threading.Lock()
 _vapid_cache: tuple[str, str] | None = None
 
@@ -187,20 +193,71 @@ def require_csrf() -> None:
         abort(403, description="CSRF 驗證失敗")
 
 
+def login_client_key() -> str:
+    # Railway sets X-Real-IP at its trusted edge. Do not trust client-supplied
+    # X-Forwarded-For for authentication rate limits.
+    for raw in (request.headers.get("X-Real-IP", ""), request.remote_addr or ""):
+        candidate = raw.split(",", 1)[0].strip()
+        try:
+            return ipaddress.ip_address(candidate).compressed
+        except ValueError:
+            continue
+    return "unknown"
+
+
+def prune_login_attempts(now: float) -> None:
+    for client, stamps in list(login_attempts.items()):
+        recent = [stamp for stamp in stamps if now - stamp < LOGIN_WINDOW_SECONDS]
+        if recent:
+            login_attempts[client] = recent
+        else:
+            login_attempts.pop(client, None)
+
+    overflow = len(login_attempts) - MAX_TRACKED_LOGIN_CLIENTS
+    if overflow > 0:
+        oldest = sorted(login_attempts, key=lambda client: login_attempts[client][-1])[:overflow]
+        for client in oldest:
+            login_attempts.pop(client, None)
+
+
 def login_is_rate_limited(client: str) -> bool:
     now = time.time()
-    recent = [stamp for stamp in login_attempts.get(client, []) if now - stamp < 15 * 60]
-    login_attempts[client] = recent
-    return len(recent) >= 8
+    with login_attempts_lock:
+        prune_login_attempts(now)
+        return len(login_attempts.get(client, [])) >= LOGIN_ATTEMPT_LIMIT
+
+
+def record_failed_login(client: str) -> None:
+    now = time.time()
+    with login_attempts_lock:
+        prune_login_attempts(now)
+        if client not in login_attempts and len(login_attempts) >= MAX_TRACKED_LOGIN_CLIENTS:
+            oldest = min(login_attempts, key=lambda key: login_attempts[key][-1])
+            login_attempts.pop(oldest, None)
+        login_attempts.setdefault(client, []).append(now)
+
+
+def clear_failed_logins(client: str) -> None:
+    with login_attempts_lock:
+        login_attempts.pop(client, None)
 
 
 @app.after_request
 def security_headers(response: Any) -> Any:
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; "
+        "form-action 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; "
+        "worker-src 'self'; manifest-src 'self'"
+    )
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+    response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "same-origin"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
-    response.headers["Cache-Control"] = "no-store" if request.path.startswith("/api/") else "no-cache"
+    response.headers["Cache-Control"] = "no-store" if request.path.startswith("/api/") or request.path == "/login" else "no-cache"
     return response
 
 
@@ -228,14 +285,14 @@ def ready() -> Any:
 
 @app.post("/api/login")
 def login() -> Any:
-    client = request.headers.get("X-Forwarded-For", request.remote_addr or "unknown").split(",")[0].strip()
+    client = login_client_key()
     if login_is_rate_limited(client):
-        return jsonify({"error": "嘗試次數過多，請 15 分鐘後再試。"}), 429
+        return jsonify({"error": "嘗試次數過多，請 15 分鐘後再試。"}), 429, {"Retry-After": str(LOGIN_WINDOW_SECONDS)}
     supplied = str((request.get_json(silent=True) or {}).get("password", ""))
     if not hmac.compare_digest(supplied, APP_PASSWORD):
-        login_attempts.setdefault(client, []).append(time.time())
+        record_failed_login(client)
         return jsonify({"error": "密碼不正確"}), 401
-    login_attempts.pop(client, None)
+    clear_failed_logins(client)
     session.clear()
     session.permanent = True
     session["authenticated"] = True
@@ -327,6 +384,19 @@ def push_subscribe() -> Any:
             "ON CONFLICT(endpoint) DO UPDATE SET subscription=excluded.subscription, user_agent=excluded.user_agent, updated_at=excluded.updated_at",
             (endpoint, json.dumps(subscription), request.user_agent.string[:500], now, now),
         )
+    return jsonify({"ok": True})
+
+
+@app.delete("/api/push/subscribe")
+@require_auth
+def push_unsubscribe() -> Any:
+    require_csrf()
+    body = request.get_json(silent=True) or {}
+    endpoint = str(body.get("endpoint", ""))
+    if not endpoint.startswith("https://") or len(endpoint) > 4096:
+        return jsonify({"error": "推播訂閱格式不正確"}), 400
+    with database() as connection:
+        connection.execute("DELETE FROM push_subscriptions WHERE endpoint = ?", (endpoint,))
     return jsonify({"ok": True})
 
 
