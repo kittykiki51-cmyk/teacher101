@@ -1,25 +1,25 @@
 :root {
-  --bg: #f6f3f2;
-  --surface: #fffdfc;
-  --surface-alt: #faf7f6;
-  --border: #e5dddb;
-  --text: #2d292a;
-  --muted: #756e70;
-  --primary: #8f4f61;
-  --primary-hover: #743f4f;
-  --primary-soft: #f6e9ed;
-  --green: #5f7f6d;
+  --bg: #f6f4f6;
+  --surface: #fffdfd;
+  --surface-alt: #faf8fa;
+  --border: #e4dee6;
+  --text: #2d2930;
+  --muted: #746e77;
+  --primary: #76516f;
+  --primary-hover: #5f405a;
+  --primary-soft: #f1eaf1;
+  --green: #607e70;
   --green-soft: #eaf1ec;
-  --amber: #a77d43;
-  --amber-soft: #f7f0e4;
-  --red: #b75662;
-  --red-soft: #f8e8eb;
-  --gray-soft: #f0eceb;
-  --sidebar-bg: #292326;
-  --sidebar-surface: #40343a;
-  --sidebar-text: #e7dee1;
-  --sidebar-muted: #b2a6aa;
-  --shadow: 0 1px 2px rgba(62, 42, 48, 0.05), 0 5px 16px rgba(62, 42, 48, 0.035);
+  --amber: #a78149;
+  --amber-soft: #f6f0e5;
+  --red: #b55b6c;
+  --red-soft: #f8e9ed;
+  --gray-soft: #efedef;
+  --sidebar-bg: #251f27;
+  --sidebar-surface: #3b313f;
+  --sidebar-text: #e9e2eb;
+  --sidebar-muted: #ada3b0;
+  --shadow: 0 1px 2px rgba(52, 37, 56, 0.05), 0 5px 16px rgba(52, 37, 56, 0.035);
 }
 
 * {
@@ -62,7 +62,7 @@ button {
   gap: 14px;
   padding: 0;
   background: var(--sidebar-bg);
-  border-right: 1px solid #3a3034;
+  border-right: 1px solid #362e39;
 }
 
 .brand {
@@ -134,7 +134,7 @@ button {
 }
 
 .nav-button:hover {
-  background: #382f33;
+  background: #342c37;
   color: #ffffff;
 }
 
@@ -146,13 +146,13 @@ button {
 }
 
 .sidebar-foot .ghost-button {
-  border-color: #51434a;
+  border-color: #4c4051;
   background: transparent;
   color: var(--sidebar-text);
 }
 
 .sidebar-foot .ghost-button:hover {
-  border-color: #69575f;
+  border-color: #65546a;
   background: var(--sidebar-surface);
   color: #ffffff;
 }
@@ -217,7 +217,7 @@ button {
 .ghost-button:hover,
 .small-button:hover,
 .icon-button:hover {
-  border-color: #d5cbca;
+  border-color: #d3cbd6;
   background: var(--surface-alt);
 }
 
@@ -577,7 +577,7 @@ button {
 }
 
 .completed-project-toggle.active {
-  border-color: #dcc8ce;
+  border-color: #d8cad8;
   background: var(--primary-soft);
   color: var(--primary);
 }
@@ -1148,7 +1148,7 @@ button:disabled {
   color: var(--muted);
   border-right: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
-  background: #fcf9f8;
+  background: #fcfafc;
   font-size: 12px;
   font-weight: 700;
 }
@@ -1180,8 +1180,8 @@ button.day-cell:hover {
 }
 
 .day-cell.outside-month {
-  background: #faf7f6;
-  color: #aaa0a2;
+  background: #faf8fa;
+  color: #aaa1ac;
 }
 
 .day-number {
@@ -1210,7 +1210,7 @@ button.day-cell:hover {
   margin-top: 2px;
   border-radius: 3px;
   background: var(--primary-soft);
-  color: #7a4051;
+  color: #694565;
   padding: 3px 5px;
   font-size: 10px;
   line-height: 1.25;
@@ -1291,7 +1291,7 @@ button.day-cell:hover {
   display: grid;
   place-items: center;
   padding: 18px;
-  background: rgba(45, 35, 39, 0.3);
+  background: rgba(40, 30, 43, 0.3);
 }
 
 .modal-layer[hidden] {
@@ -1706,7 +1706,7 @@ button.day-cell:hover {
     grid-template-columns: repeat(4, minmax(0, 1fr));
     min-height: 54px;
     border-top: 1px solid var(--border);
-    background: rgba(255, 253, 252, 0.96);
+    background: rgba(255, 253, 255, 0.96);
     backdrop-filter: blur(12px);
   }
 
