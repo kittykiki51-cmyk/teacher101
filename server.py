@@ -334,7 +334,17 @@ def due_tasks(workspace: dict[str, Any], now: datetime) -> list[dict[str, Any]]:
     due: list[dict[str, Any]] = []
     current_minute = now.replace(second=0, microsecond=0)
     for task in workspace.get("tasks", []):
-        if task.get("status") == "已完成" or not task.get("date") or not task.get("time"):
+        if task.get("status") == "已完成":
+            continue
+        snooze_until = str(task.get("snooze_until", ""))[:16]
+        if snooze_until:
+            try:
+                if datetime.fromisoformat(snooze_until).replace(tzinfo=APP_TIMEZONE) == current_minute:
+                    due.append(task)
+                continue
+            except ValueError:
+                pass
+        if not task.get("date") or not task.get("time"):
             continue
         reminder = task.get("reminder_minutes")
         if reminder in {None, ""}:
@@ -368,7 +378,7 @@ def send_push_notifications() -> None:
         subscriptions = connection.execute("SELECT endpoint, subscription FROM push_subscriptions").fetchall()
         projects = {project.get("id"): project for project in workspace.get("projects", [])}
         for task in due_tasks(workspace, now):
-            key = f"{task.get('id')}:{task.get('date')}:{str(task.get('time', ''))[:5]}:{task.get('reminder_minutes', '')}"
+            key = f"{task.get('id')}:{task.get('snooze_until') or task.get('date')}:{str(task.get('time', ''))[:5]}:{task.get('reminder_minutes', '')}"
             if connection.execute("SELECT 1 FROM sent_notifications WHERE notification_key = ?", (key,)).fetchone():
                 continue
             project = projects.get(task.get("project_id"), {})
@@ -377,6 +387,7 @@ def send_push_notifications() -> None:
                 "body": f"{project.get('course', '我的工作')}｜{task.get('title', '工作時間到了')}",
                 "url": "/",
                 "tag": key,
+                "task_id": task.get("id", ""),
             }, ensure_ascii=False)
             delivered = False
             for subscription in subscriptions:

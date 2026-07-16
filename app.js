@@ -1,4 +1,5 @@
 const STORAGE_KEY = "teacher_operations_web_workspace";
+const OFFLINE_CACHE_KEY = "teacher_operations_cloud_offline_cache";
 const CLOUD_MODE = window.location?.protocol !== "file:";
 
 const STATUS_COMPLETED = "已完成";
@@ -24,6 +25,8 @@ const emptyWorkspace = () => ({
   progress_logs: [],
   project_messages: [],
   history: [],
+  archives: [],
+  deleted_ids: {},
 });
 
 let state = {
@@ -34,6 +37,9 @@ let state = {
   hideCompletedProjects: true,
   calendarQuery: "",
   calendarStatusFilter: "全部",
+  calendarView: "month",
+  globalQuery: "",
+  pageBeforeSearch: "dashboard",
   selectedProjectId: "",
   selectedTaskIds: new Set(),
   expandedCompletedProjectIds: new Set(),
@@ -50,7 +56,14 @@ let cloudSaveInFlight = false;
 const $ = (selector) => document.querySelector(selector);
 
 function loadWorkspace() {
-  if (CLOUD_MODE) return emptyWorkspace();
+  if (CLOUD_MODE) {
+    try {
+      const cached = localStorage.getItem(OFFLINE_CACHE_KEY);
+      return cached ? normalizeWorkspace(JSON.parse(cached)) : emptyWorkspace();
+    } catch {
+      return emptyWorkspace();
+    }
+  }
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) return normalizeWorkspace(JSON.parse(saved));
@@ -68,6 +81,7 @@ function saveWorkspace() {
     if (indicator) indicator.textContent = "已自動保存";
     return;
   }
+  localStorage.setItem(OFFLINE_CACHE_KEY, JSON.stringify(state.workspace));
   if (indicator) indicator.textContent = "正在同步...";
   window.clearTimeout(cloudSaveTimer);
   cloudSaveTimer = window.setTimeout(saveCloudWorkspace, 450);
@@ -87,6 +101,7 @@ async function loadCloudWorkspace() {
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || "雲端資料讀取失敗");
   state.workspace = normalizeWorkspace(result.workspace);
+  localStorage.setItem(OFFLINE_CACHE_KEY, JSON.stringify(state.workspace));
   cloudRevision = result.revision;
   cloudCsrfToken = result.csrf_token;
 }
@@ -103,17 +118,24 @@ async function saveCloudWorkspace() {
     });
     const result = await response.json();
     if (response.status === 409) {
+      const localWorkspace = normalizeWorkspace(state.workspace);
       await loadCloudWorkspace();
-      showToast("另一台裝置已有新資料，已重新載入");
+      state.workspace = mergeWorkspaces(state.workspace, localWorkspace);
+      localStorage.setItem(OFFLINE_CACHE_KEY, JSON.stringify(state.workspace));
+      cloudSaveInFlight = false;
+      showToast("已逐筆合併另一台裝置的更新");
+      await saveCloudWorkspace();
       render();
       return;
     }
     if (!response.ok) throw new Error(result.error || "同步失敗");
     cloudRevision = result.revision;
+    localStorage.setItem(OFFLINE_CACHE_KEY, JSON.stringify(state.workspace));
     if (indicator) indicator.textContent = "已同步雲端";
   } catch (error) {
-    if (indicator) indicator.textContent = "同步失敗";
-    showToast(error.message);
+    localStorage.setItem(OFFLINE_CACHE_KEY, JSON.stringify(state.workspace));
+    if (indicator) indicator.textContent = navigator.onLine ? "同步失敗" : "離線保存中";
+    showToast(navigator.onLine ? error.message : "目前離線，資料已保存在這台裝置");
   } finally {
     cloudSaveInFlight = false;
   }
@@ -136,7 +158,38 @@ function normalizeWorkspace(value) {
     progress_logs: Array.isArray(data.progress_logs) ? data.progress_logs : [],
     project_messages: Array.isArray(data.project_messages) ? data.project_messages : [],
     history: Array.isArray(data.history) ? data.history : [],
+    archives: Array.isArray(data.archives) ? data.archives : [],
+    deleted_ids: data.deleted_ids && typeof data.deleted_ids === "object" ? data.deleted_ids : {},
   };
+}
+
+function mergeWorkspaces(remoteValue, localValue) {
+  const remote = normalizeWorkspace(remoteValue);
+  const local = normalizeWorkspace(localValue);
+  const deleted = { ...remote.deleted_ids, ...local.deleted_ids };
+  const mergeById = (remoteItems, localItems) => {
+    const keyOf = (item) => item.id || `${item.project_id || ""}|${item.time || item.date || ""}|${item.text || item.msg || item.title || ""}`;
+    const items = new Map(remoteItems.map((item) => [keyOf(item), item]));
+    localItems.forEach((item) => { const key = keyOf(item); items.set(key, { ...(items.get(key) || {}), ...item }); });
+    return [...items.values()].filter((item) => !deleted[item.id]);
+  };
+  return normalizeWorkspace({
+    ...remote,
+    settings: { ...remote.settings, ...local.settings },
+    projects: mergeById(remote.projects, local.projects),
+    tasks: mergeById(remote.tasks, local.tasks),
+    checklists: mergeById(remote.checklists, local.checklists),
+    progress_logs: mergeById(remote.progress_logs, local.progress_logs),
+    project_messages: mergeById(remote.project_messages, local.project_messages),
+    history: mergeById(remote.history, local.history),
+    archives: mergeById(remote.archives, local.archives),
+    deleted_ids: deleted,
+  });
+}
+
+function markDeleted(id) {
+  if (!id) return;
+  state.workspace.deleted_ids[id] = new Date().toISOString();
 }
 
 function todayISO() {
@@ -260,6 +313,10 @@ function showToast(message) {
 
 function setPage(page) {
   state.page = page;
+  if (page !== "search") {
+    state.globalQuery = "";
+    if ($("#globalSearch")) $("#globalSearch").value = "";
+  }
   render();
 }
 
@@ -285,7 +342,7 @@ function render() {
   renderNav();
   const item = NAV_ITEMS.find((entry) => entry.id === state.page) || NAV_ITEMS[0];
   const selectedProject = projectById(state.selectedProjectId);
-  $("#pageTitle").textContent = state.page === "projectDetail" && selectedProject
+  $("#pageTitle").textContent = state.page === "search" ? "全站搜尋" : state.page === "projectDetail" && selectedProject
     ? selectedProject.course || "專案內容"
     : item.title;
   $("#todayLabel").textContent = new Intl.DateTimeFormat("zh-Hant", {
@@ -302,9 +359,36 @@ function render() {
     calendar: renderCalendar,
     phone: renderPhone,
     settings: renderSettings,
+    search: renderGlobalSearch,
   };
   $("#content").innerHTML = (renderers[state.page] || renderDashboard)();
   bindContentEvents();
+}
+
+function renderGlobalSearch() {
+  const query = state.globalQuery.trim().toLowerCase();
+  if (!query) return `<section class="card"><p class="muted">輸入關鍵字即可搜尋所有資料。</p></section>`;
+  const includes = (...values) => values.join(" ").toLowerCase().includes(query);
+  const results = [];
+  state.workspace.projects.forEach((project) => {
+    if (includes(project.teacher || "", project.course || "", project.current_stage || "")) results.push({ type: "專案", title: project.course || "未命名專案", detail: project.teacher || "", project_id: project.id });
+  });
+  state.workspace.tasks.forEach((task) => {
+    if (includes(task.title || "", task.note || "", projectById(task.project_id)?.course || "")) results.push({ type: "工作", title: task.title || "未命名工作", detail: `${task.date || "未排日期"} ${task.time || ""}`, task_id: task.id });
+  });
+  state.workspace.project_messages.forEach((message) => {
+    if (includes(message.text || "")) results.push({ type: "留言", title: message.text || "", detail: projectById(message.project_id)?.course || "", project_id: message.project_id });
+  });
+  state.workspace.checklists.forEach((group) => (group.items || []).forEach((item) => {
+    if (includes(group.name || "", item.title || "")) results.push({ type: "清單", title: item.title || "", detail: group.name || "", project_id: group.project_id });
+  }));
+  state.workspace.history.forEach((item) => {
+    if (includes(item.text || item.msg || "")) results.push({ type: "紀錄", title: item.text || item.msg || "", detail: String(item.time || "").replace("T", " "), project_id: item.project_id });
+  });
+  return `<section class="card search-results-page">
+    <div class="card-header"><div><h3>搜尋結果</h3><p class="muted">找到 ${results.length} 筆資料</p></div><button class="ghost-button" data-search-close>返回</button></div>
+    <div class="search-result-list">${results.slice(0, 100).map((item) => `<button class="search-result-row" ${item.task_id ? `data-task-edit="${escapeHTML(item.task_id)}"` : item.project_id ? `data-project-open="${escapeHTML(item.project_id)}"` : ""}><span class="pill">${escapeHTML(item.type)}</span><span><strong>${escapeHTML(item.title)}</strong><small>${escapeHTML(item.detail)}</small></span></button>`).join("") || `<p class="muted">沒有符合的資料。</p>`}</div>
+  </section>`;
 }
 
 function renderDashboard() {
@@ -702,6 +786,7 @@ function taskList(tasks, emptyText, phoneMode = false) {
               ${task.time ? `<span>${escapeHTML(task.time)}</span>` : ""}
               <span>${escapeHTML(project ? project.course : "我的工作")}</span>
               ${task.reminder_minutes !== undefined && task.reminder_minutes !== "" ? `<span>${escapeHTML(reminderLabel(task.reminder_minutes))}</span>` : ""}
+              ${task.recurrence && task.recurrence !== "none" ? `<span>${escapeHTML(({ daily: "每天重複", weekly: "每週重複", monthly: "每月重複" })[task.recurrence] || "重複工作")}</span>` : ""}
             </div>
             ${task.note ? `<p class="task-note">${escapeHTML(task.note)}</p>` : ""}
           </div>
@@ -721,96 +806,97 @@ function reminderLabel(value) {
   return ({ "0": "準時提醒", "10": "提前 10 分鐘", "60": "提前 1 小時", "1440": "提前 1 天" })[String(value)] || "已設定提醒";
 }
 
-function renderCalendar() {
-  const base = state.selectedMonth;
-  const year = base.getFullYear();
-  const month = base.getMonth();
-  const displayedMonth = monthKey(base);
-  const first = new Date(year, month, 1);
-  const last = new Date(year, month + 1, 0);
-  const startOffset = first.getDay();
-  const cells = [];
-  for (let index = 0; index < 42; index += 1) {
-    cells.push(new Date(year, month, index - startOffset + 1));
-  }
-  const days = ["日", "一", "二", "三", "四", "五", "六"];
+function calendarTaskMatches(task) {
   const query = state.calendarQuery.trim().toLowerCase();
-  const matchesCalendarFilter = (task) => {
-    const project = projectById(task.project_id);
-    const haystack = `${task.title || ""} ${task.note || ""} ${project?.course || ""}`.toLowerCase();
-    const statusMatches = state.calendarStatusFilter === "全部"
-      || (state.calendarStatusFilter === "未完成" && task.status !== STATUS_COMPLETED)
-      || (state.calendarStatusFilter === "已完成" && task.status === STATUS_COMPLETED);
-    return (!query || haystack.includes(query)) && statusMatches;
-  };
-  const monthTasks = state.workspace.tasks.filter((task) => task.date && task.date.startsWith(displayedMonth) && matchesCalendarFilter(task)).sort(sortTasks);
-  if (!state.selectedCalendarDate?.startsWith(displayedMonth)) {
-    state.selectedCalendarDate = dateISO(first);
-  }
-  const selectedDate = state.selectedCalendarDate;
-  const selectedTasks = state.workspace.tasks.filter((task) => task.date === selectedDate && matchesCalendarFilter(task)).sort(sortTasks);
-  const selectedDateLabel = new Intl.DateTimeFormat("zh-Hant", {
-    month: "long",
-    day: "numeric",
-    weekday: "long",
-  }).format(new Date(`${selectedDate}T00:00:00`));
-  return `
-    <section class="card calendar-card">
-      <div class="card-header">
-        <div><h3>${year} 年 ${month + 1} 月</h3><p class="muted">${monthTasks.length} 件工作</p></div>
-        <div class="toolbar">
-          <button class="small-button" data-month="-1">上個月</button>
-          <button class="small-button" data-month="0">今天</button>
-          <button class="small-button" data-month="1">下個月</button>
-        </div>
+  const project = projectById(task.project_id);
+  const statusMatches = state.calendarStatusFilter === "全部"
+    || (state.calendarStatusFilter === "未完成" && task.status !== STATUS_COMPLETED)
+    || (state.calendarStatusFilter === "已完成" && task.status === STATUS_COMPLETED);
+  return statusMatches && (!query || `${task.title || ""} ${task.note || ""} ${project?.course || ""}`.toLowerCase().includes(query));
+}
+
+function tasksOnDate(iso) {
+  return state.workspace.tasks.filter((task) => task.date === iso && calendarTaskMatches(task)).sort(sortTasks);
+}
+
+function calendarEvent(task, extraClass = "") {
+  return `<button type="button" draggable="true" class="calendar-event ${extraClass} ${task.status === STATUS_COMPLETED ? "completed" : ""}" data-calendar-task="${escapeHTML(task.id)}" title="拖曳以調整日期或時間"><b>${escapeHTML(task.time || "全天")}</b>${escapeHTML(task.title || "未命名工作")}</button>`;
+}
+
+function renderCalendar() {
+  const anchor = parseDate(state.selectedCalendarDate) || new Date();
+  const selectedDate = dateISO(anchor);
+  const selectedTasks = tasksOnDate(selectedDate);
+  const selectedDateLabel = new Intl.DateTimeFormat("zh-Hant", { month: "long", day: "numeric", weekday: "long" }).format(anchor);
+  const viewLabels = { month: "月", week: "週", day: "日" };
+  const title = state.calendarView === "month"
+    ? `${anchor.getFullYear()} 年 ${anchor.getMonth() + 1} 月`
+    : state.calendarView === "week" ? weekRangeLabel(anchor) : selectedDateLabel;
+  return `<section class="card calendar-card">
+    <div class="card-header calendar-main-header">
+      <div><h3>${escapeHTML(title)}</h3><p class="muted">${selectedTasks.length} 件所選日期工作</p></div>
+      <div class="calendar-header-actions">
+        <div class="segmented-control">${Object.entries(viewLabels).map(([value, label]) => `<button class="${state.calendarView === value ? "active" : ""}" data-calendar-view="${value}">${label}</button>`).join("")}</div>
+        <div class="toolbar"><button class="small-button" data-period="-1">上一${viewLabels[state.calendarView]}</button><button class="small-button" data-period="0">今天</button><button class="small-button" data-period="1">下一${viewLabels[state.calendarView]}</button></div>
       </div>
-      <div class="calendar-filters">
-        <input class="search-input" id="calendarSearch" value="${escapeHTML(state.calendarQuery)}" placeholder="搜尋工作、課程或備註">
-        <select class="select" id="calendarStatusFilter" aria-label="工作狀態篩選">
-          ${["全部", "未完成", "已完成"].map((value) => `<option ${state.calendarStatusFilter === value ? "selected" : ""}>${value}</option>`).join("")}
-        </select>
-        <button class="primary-button" data-calendar-add="${escapeHTML(selectedDate)}">新增工作</button>
-      </div>
-      <div class="grid calendar-layout">
-        <div class="calendar-grid">
-          ${days.map((day) => `<div class="day-name">${day}</div>`).join("")}
-          ${cells.map((date) => renderDayCell(date, month)).join("")}
-        </div>
-        <aside class="calendar-day-panel" aria-live="polite">
-          <div class="calendar-day-header">
-            <div>
-              <p class="calendar-day-kicker">${selectedDate === todayISO() ? "今日工作項目" : "所選日期工作"}</p>
-              <h4>${escapeHTML(selectedDateLabel)}</h4>
-            </div>
-            <div class="toolbar">${pill(`${selectedTasks.length} 件`, selectedTasks.length ? "green" : "gray")}<button class="icon-button calendar-add-button" data-calendar-add="${escapeHTML(selectedDate)}" aria-label="新增這一天的工作" title="新增工作">＋</button></div>
-          </div>
-          <div class="list">${taskList(selectedTasks, "這一天沒有排程工作。")}</div>
-        </aside>
-      </div>
-    </section>
-  `;
+    </div>
+    <div class="calendar-filters">
+      <input class="search-input" id="calendarSearch" value="${escapeHTML(state.calendarQuery)}" placeholder="搜尋工作、課程或備註">
+      <select class="select" id="calendarStatusFilter" aria-label="工作狀態篩選">${["全部", "未完成", "已完成"].map((value) => `<option ${state.calendarStatusFilter === value ? "selected" : ""}>${value}</option>`).join("")}</select>
+      <button class="primary-button" data-calendar-add="${escapeHTML(selectedDate)}">新增工作</button>
+    </div>
+    <div class="grid calendar-layout ${state.calendarView}-view-layout">
+      <div class="calendar-view-main">${state.calendarView === "month" ? renderMonthCalendar(anchor) : state.calendarView === "week" ? renderWeekCalendar(anchor) : renderDayCalendar(anchor)}</div>
+      <aside class="calendar-day-panel" aria-live="polite">
+        <div class="calendar-day-header"><div><p class="calendar-day-kicker">${selectedDate === todayISO() ? "今日工作項目" : "所選日期工作"}</p><h4>${escapeHTML(selectedDateLabel)}</h4></div><div class="toolbar">${pill(`${selectedTasks.length} 件`, selectedTasks.length ? "green" : "gray")}<button class="icon-button calendar-add-button" data-calendar-add="${escapeHTML(selectedDate)}" title="新增工作">＋</button></div></div>
+        <div class="list">${taskList(selectedTasks, "這一天沒有排程工作。")}</div>
+      </aside>
+    </div>
+  </section>`;
+}
+
+function renderMonthCalendar(anchor) {
+  const year = anchor.getFullYear();
+  const month = anchor.getMonth();
+  const first = new Date(year, month, 1);
+  const startOffset = first.getDay();
+  const cells = Array.from({ length: 42 }, (_, index) => new Date(year, month, index - startOffset + 1));
+  return `<div class="calendar-grid">${["日", "一", "二", "三", "四", "五", "六"].map((day) => `<div class="day-name">${day}</div>`).join("")}${cells.map((date) => renderDayCell(date, month)).join("")}</div>`;
 }
 
 function renderDayCell(date, displayedMonth) {
   const iso = dateISO(date);
-  const query = state.calendarQuery.trim().toLowerCase();
-  const tasks = state.workspace.tasks.filter((task) => {
-    if (task.date !== iso) return false;
-    const project = projectById(task.project_id);
-    const statusMatches = state.calendarStatusFilter === "全部"
-      || (state.calendarStatusFilter === "未完成" && task.status !== STATUS_COMPLETED)
-      || (state.calendarStatusFilter === "已完成" && task.status === STATUS_COMPLETED);
-    return statusMatches && (!query || `${task.title || ""} ${task.note || ""} ${project?.course || ""}`.toLowerCase().includes(query));
-  }).sort(sortTasks);
-  const selected = iso === state.selectedCalendarDate;
-  const outside = date.getMonth() !== displayedMonth;
-  return `
-    <button type="button" class="day-cell ${outside ? "outside-month" : ""} ${iso === todayISO() ? "today" : ""} ${selected ? "selected" : ""} ${tasks.length ? "has-tasks" : ""}" data-calendar-date="${iso}" aria-label="${date.getMonth() + 1} 月 ${date.getDate()} 日，${tasks.length} 件工作；點擊新增" aria-pressed="${selected}">
-      <div class="day-number"><span>${date.getDate()}</span></div>
-      ${tasks.slice(0, 3).map((task) => `<span class="calendar-event ${task.status === STATUS_COMPLETED ? "completed" : ""}"><b>${escapeHTML(task.time || "全天")}</b>${escapeHTML(task.title || "未命名工作")}</span>`).join("")}
-      ${tasks.length > 3 ? `<span class="calendar-more">另有 ${tasks.length - 3} 件</span>` : ""}
-    </button>
-  `;
+  const tasks = tasksOnDate(iso);
+  return `<div class="day-cell ${date.getMonth() !== displayedMonth ? "outside-month" : ""} ${iso === todayISO() ? "today" : ""} ${iso === state.selectedCalendarDate ? "selected" : ""} ${tasks.length ? "has-tasks" : ""}" data-calendar-date="${iso}" data-calendar-drop="${iso}" role="button" tabindex="0">
+    <div class="day-number"><span>${date.getDate()}</span></div>
+    ${tasks.slice(0, 3).map((task) => calendarEvent(task)).join("")}${tasks.length > 3 ? `<span class="calendar-more">另有 ${tasks.length - 3} 件</span>` : ""}
+  </div>`;
+}
+
+function weekStart(date) {
+  const start = new Date(date);
+  start.setDate(start.getDate() - start.getDay());
+  return start;
+}
+
+function weekRangeLabel(date) {
+  const start = weekStart(date);
+  const end = new Date(start); end.setDate(end.getDate() + 6);
+  return `${start.getMonth() + 1}/${start.getDate()} - ${end.getMonth() + 1}/${end.getDate()}`;
+}
+
+function renderWeekCalendar(anchor) {
+  const start = weekStart(anchor);
+  const dates = Array.from({ length: 7 }, (_, index) => { const date = new Date(start); date.setDate(start.getDate() + index); return date; });
+  return `<div class="week-calendar">${dates.map((date) => { const iso = dateISO(date); const tasks = tasksOnDate(iso); return `<section class="week-day ${iso === todayISO() ? "today" : ""}" data-calendar-date="${iso}" data-calendar-drop="${iso}"><header><span>${["日", "一", "二", "三", "四", "五", "六"][date.getDay()]}</span><strong>${date.getDate()}</strong></header><div class="week-events">${tasks.map((task) => calendarEvent(task, "week-event")).join("") || `<span class="week-empty">＋</span>`}</div></section>`; }).join("")}</div>`;
+}
+
+function renderDayCalendar(anchor) {
+  const iso = dateISO(anchor);
+  const tasks = tasksOnDate(iso);
+  const allDay = tasks.filter((task) => !task.time);
+  const hours = Array.from({ length: 16 }, (_, index) => index + 7);
+  return `<div class="day-agenda"><div class="all-day-row" data-calendar-drop="${iso}"><strong>全天</strong><div>${allDay.map((task) => calendarEvent(task, "agenda-event")).join("") || `<span class="muted">沒有全天工作</span>`}</div></div>${hours.map((hour) => { const prefix = String(hour).padStart(2, "0"); const hourTasks = tasks.filter((task) => String(task.time || "").startsWith(prefix)); return `<div class="hour-row" data-calendar-drop="${iso}" data-drop-time="${prefix}:00"><time>${prefix}:00</time><div>${hourTasks.map((task) => calendarEvent(task, "agenda-event")).join("")}</div></div>`; }).join("")}</div>`;
 }
 
 function renderPhone() {
@@ -870,11 +956,12 @@ function renderSettings() {
         </div>
         <div class="import-panel archive-panel">
           <h4>年度備份與封存</h4>
-          <p class="muted">先下載完整 JSON，再清除指定年度已完成的工作與已完成專案；設定與進行中資料會保留。</p>
+          <p class="muted">先下載完整 JSON，再把指定年度已完成資料移至封存區；可隨時下載或還原。</p>
           <div class="archive-controls">
             <input class="search-input" id="archiveYear" type="number" min="2000" max="2100" value="${new Date().getFullYear() - 1}" aria-label="封存年度">
             <button class="danger-button" data-archive-year>備份並封存</button>
           </div>
+          <div class="archive-list">${(data.archives || []).slice().sort((a, b) => Number(b.year) - Number(a.year)).map((archive) => `<div class="archive-row"><div><strong>${escapeHTML(archive.year)} 年封存</strong><p class="muted">${archive.projects?.length || 0} 個專案・${archive.tasks?.length || 0} 件工作・${String(archive.created_at || "").slice(0, 10)}</p></div><div class="toolbar"><button class="small-button" data-archive-download="${escapeHTML(archive.id)}">下載</button><button class="ghost-button" data-archive-restore="${escapeHTML(archive.id)}">還原</button><button class="danger-button" data-archive-delete="${escapeHTML(archive.id)}">刪除</button></div></div>`).join("") || `<p class="muted archive-empty">目前沒有封存資料。</p>`}</div>
         </div>
         <div class="card">
           <h4>資料摘要</h4>
@@ -890,6 +977,7 @@ function renderSettings() {
 }
 
 function bindContentEvents() {
+  document.querySelectorAll("[data-search-close]").forEach((button) => button.addEventListener("click", () => setPage(state.pageBeforeSearch || "dashboard")));
   const projectSearch = $("#projectSearch");
   if (projectSearch) {
     projectSearch.addEventListener("input", (event) => {
@@ -984,9 +1072,7 @@ function bindContentEvents() {
     button.addEventListener("click", () => {
       const task = state.workspace.tasks.find((item) => item.id === button.dataset.complete);
       if (!task) return;
-      task.status = STATUS_COMPLETED;
-      task.completed_at = new Date().toISOString().slice(0, 19);
-      if (task.task_type === TASK_TYPE_PHONE) task.phone_status = "已聯繫";
+      completeTask(task);
       saveWorkspace();
       showToast("已標記完成");
       render();
@@ -999,8 +1085,7 @@ function bindContentEvents() {
       if (!task) return;
       task.phone_status = button.dataset.status;
       if (button.dataset.status === "已聯繫") {
-        task.status = STATUS_COMPLETED;
-        task.completed_at = new Date().toISOString().slice(0, 19);
+        completeTask(task);
       }
       saveWorkspace();
       showToast(`電話狀態已更新：${button.dataset.status}`);
@@ -1008,20 +1093,41 @@ function bindContentEvents() {
     });
   });
 
-  document.querySelectorAll("[data-month]").forEach((button) => {
+  document.querySelectorAll("[data-calendar-view]").forEach((button) => button.addEventListener("click", () => {
+    state.calendarView = button.dataset.calendarView;
+    render();
+  }));
+
+  document.querySelectorAll("[data-period]").forEach((button) => {
     button.addEventListener("click", () => {
-      const offset = Number(button.dataset.month);
+      const offset = Number(button.dataset.period);
       const now = new Date();
-      state.selectedMonth = offset === 0
-        ? new Date(now.getFullYear(), now.getMonth(), 1)
-        : new Date(state.selectedMonth.getFullYear(), state.selectedMonth.getMonth() + offset, 1);
-      state.selectedCalendarDate = offset === 0 ? todayISO() : dateISO(state.selectedMonth);
+      const anchor = offset === 0 ? now : (parseDate(state.selectedCalendarDate) || now);
+      if (offset !== 0) {
+        if (state.calendarView === "month") anchor.setMonth(anchor.getMonth() + offset);
+        else anchor.setDate(anchor.getDate() + offset * (state.calendarView === "week" ? 7 : 1));
+      }
+      state.selectedMonth = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
+      state.selectedCalendarDate = dateISO(anchor);
       render();
     });
   });
 
+  document.querySelectorAll("[data-calendar-task]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      openTaskDialog(state.workspace.tasks.find((task) => task.id === button.dataset.calendarTask));
+    });
+    button.addEventListener("dragstart", (event) => {
+      event.stopPropagation();
+      event.dataTransfer.setData("text/task-id", button.dataset.calendarTask);
+      event.dataTransfer.effectAllowed = "move";
+    });
+  });
+
   document.querySelectorAll("[data-calendar-date]").forEach((button) => {
-    button.addEventListener("click", () => {
+    button.addEventListener("click", (event) => {
+      if (event.target.closest("[data-calendar-task]")) return;
       state.selectedCalendarDate = button.dataset.calendarDate;
       const selected = parseDate(state.selectedCalendarDate);
       if (selected) state.selectedMonth = new Date(selected.getFullYear(), selected.getMonth(), 1);
@@ -1029,6 +1135,24 @@ function bindContentEvents() {
       openTaskDialog({ date: state.selectedCalendarDate, status: "未完成", reminder_minutes: "0" });
     });
   });
+  document.querySelectorAll("[data-calendar-drop]").forEach((target) => {
+    target.addEventListener("dragover", (event) => { event.preventDefault(); target.classList.add("drag-over"); });
+    target.addEventListener("dragleave", () => target.classList.remove("drag-over"));
+    target.addEventListener("drop", (event) => {
+      event.preventDefault();
+      const task = state.workspace.tasks.find((item) => item.id === event.dataTransfer.getData("text/task-id"));
+      if (!task) return;
+      task.date = target.dataset.calendarDrop;
+      if (target.dataset.dropTime) task.time = target.dataset.dropTime;
+      task.updated_at = new Date().toISOString();
+      state.selectedCalendarDate = task.date;
+      saveWorkspace(); showToast("工作時間已調整"); render();
+    });
+  });
+  document.querySelectorAll("[data-drop-time]").forEach((target) => target.addEventListener("click", (event) => {
+    if (event.target.closest("[data-calendar-task]")) return;
+    openTaskDialog({ date: target.dataset.calendarDrop, time: target.dataset.dropTime, status: "未完成", reminder_minutes: "0" });
+  }));
   document.querySelectorAll("[data-calendar-add]").forEach((button) => button.addEventListener("click", () => {
     openTaskDialog({ date: button.dataset.calendarAdd || state.selectedCalendarDate, status: "未完成", reminder_minutes: "0" });
   }));
@@ -1037,6 +1161,9 @@ function bindContentEvents() {
   document.querySelectorAll("[data-export]").forEach((button) => button.addEventListener("click", exportWorkspace));
   document.querySelectorAll("[data-export-csv]").forEach((button) => button.addEventListener("click", exportTasksCSV));
   document.querySelectorAll("[data-archive-year]").forEach((button) => button.addEventListener("click", archiveYear));
+  document.querySelectorAll("[data-archive-download]").forEach((button) => button.addEventListener("click", () => downloadArchive(button.dataset.archiveDownload)));
+  document.querySelectorAll("[data-archive-restore]").forEach((button) => button.addEventListener("click", () => restoreArchive(button.dataset.archiveRestore)));
+  document.querySelectorAll("[data-archive-delete]").forEach((button) => button.addEventListener("click", () => deleteArchive(button.dataset.archiveDelete)));
   document.querySelectorAll("[data-clear]").forEach((button) => {
     button.addEventListener("click", () => {
       if (!confirm("確定清除這個瀏覽器中的網頁版資料？")) return;
@@ -1102,6 +1229,18 @@ function archiveYear() {
   }
   if (!confirm(`將先下載完整備份，再移除 ${year} 年已完成工作 ${completedTaskIds.size} 件、已完成專案 ${completedProjectIds.size} 件。確定繼續？`)) return;
   exportWorkspace();
+  const archivedTaskIds = new Set(state.workspace.tasks.filter((task) => completedTaskIds.has(task.id) || completedProjectIds.has(task.project_id)).map((task) => task.id));
+  const archive = {
+    id: uid("archive"), year, created_at: new Date().toISOString(),
+    projects: state.workspace.projects.filter((project) => completedProjectIds.has(project.id)),
+    tasks: state.workspace.tasks.filter((task) => archivedTaskIds.has(task.id)),
+    checklists: state.workspace.checklists.filter((group) => completedProjectIds.has(group.project_id)),
+    progress_logs: state.workspace.progress_logs.filter((item) => completedProjectIds.has(item.project_id)),
+    project_messages: state.workspace.project_messages.filter((item) => completedProjectIds.has(item.project_id)),
+    history: state.workspace.history.filter((item) => completedProjectIds.has(item.project_id)),
+  };
+  state.workspace.archives.push(archive);
+  [...completedProjectIds, ...archivedTaskIds, ...archive.checklists.map((item) => item.id), ...archive.progress_logs.map((item) => item.id), ...archive.project_messages.map((item) => item.id), ...archive.history.map((item) => item.id)].forEach(markDeleted);
   state.workspace.tasks = state.workspace.tasks.filter((task) => !completedTaskIds.has(task.id) && !completedProjectIds.has(task.project_id));
   state.workspace.projects = state.workspace.projects.filter((project) => !completedProjectIds.has(project.id));
   state.workspace.checklists = state.workspace.checklists.filter((group) => !completedProjectIds.has(group.project_id));
@@ -1113,10 +1252,55 @@ function archiveYear() {
   render();
 }
 
+function downloadArchive(archiveId) {
+  const archive = state.workspace.archives.find((item) => item.id === archiveId);
+  if (!archive) return;
+  const url = URL.createObjectURL(new Blob([JSON.stringify(archive, null, 2)], { type: "application/json" }));
+  const link = document.createElement("a"); link.href = url; link.download = `老師專案封存_${archive.year}.json`; link.click(); URL.revokeObjectURL(url);
+  showToast("封存資料已下載");
+}
+
+function restoreArchive(archiveId) {
+  const archive = state.workspace.archives.find((item) => item.id === archiveId);
+  if (!archive || !confirm(`確定還原 ${archive.year} 年封存資料？`)) return;
+  const restore = (key) => {
+    const existing = new Set(state.workspace[key].map((item) => item.id));
+    (archive[key] || []).forEach((item) => { delete state.workspace.deleted_ids[item.id]; if (!existing.has(item.id)) state.workspace[key].push(item); });
+  };
+  ["projects", "tasks", "checklists", "progress_logs", "project_messages", "history"].forEach(restore);
+  markDeleted(archive.id);
+  state.workspace.archives = state.workspace.archives.filter((item) => item.id !== archiveId);
+  saveWorkspace(); showToast("封存資料已還原"); render();
+}
+
+function deleteArchive(archiveId) {
+  const archive = state.workspace.archives.find((item) => item.id === archiveId);
+  if (!archive || !confirm(`永久刪除 ${archive.year} 年封存？此操作無法復原。`)) return;
+  markDeleted(archive.id);
+  state.workspace.archives = state.workspace.archives.filter((item) => item.id !== archiveId);
+  saveWorkspace(); showToast("封存已永久刪除"); render();
+}
+
 function setupGlobalEvents() {
   $("#importButton").addEventListener("click", openImporter);
   $("#exportButton").addEventListener("click", exportWorkspace);
   $("#quickAddButton")?.addEventListener("click", () => openTaskDialog({ date: todayISO(), status: "未完成", reminder_minutes: "0" }));
+  $("#globalSearch")?.addEventListener("input", (event) => {
+    const value = event.target.value;
+    if (state.page !== "search") state.pageBeforeSearch = state.page;
+    state.globalQuery = value;
+    state.page = value.trim() ? "search" : state.pageBeforeSearch;
+    render();
+    $("#globalSearch")?.focus();
+  });
+  window.addEventListener("offline", () => {
+    if ($("#saveIndicator")) $("#saveIndicator").textContent = "離線保存中";
+    showToast("目前離線，仍可繼續使用");
+  });
+  window.addEventListener("online", () => {
+    if ($("#saveIndicator")) $("#saveIndicator").textContent = "正在恢復同步...";
+    saveCloudWorkspace().then(() => showToast("已恢復連線並同步"));
+  });
   $("#refreshButton").addEventListener("click", () => {
     if (CLOUD_MODE) {
       loadCloudWorkspace().then(() => { showToast("已重新整理雲端資料"); render(); }).catch((error) => showToast(error.message));
@@ -1305,6 +1489,11 @@ function addHistory(text, projectId, type = "activity") {
 function deleteProject(projectId) {
   const project = projectById(projectId);
   if (!project || !confirm(`確定刪除「${project.course}」及其工作、清單與留言？`)) return;
+  [projectId,
+    ...state.workspace.tasks.filter((item) => item.project_id === projectId).map((item) => item.id),
+    ...state.workspace.checklists.filter((item) => item.project_id === projectId).map((item) => item.id),
+    ...state.workspace.project_messages.filter((item) => item.project_id === projectId).map((item) => item.id),
+  ].forEach(markDeleted);
   state.workspace.projects = state.workspace.projects.filter((item) => item.id !== projectId);
   state.workspace.tasks = state.workspace.tasks.filter((item) => item.project_id !== projectId);
   state.workspace.checklists = state.workspace.checklists.filter((item) => item.project_id !== projectId);
@@ -1330,12 +1519,14 @@ function openTaskDialog(task = null, projectId = "") {
         <label><span>狀態</span><select class="select" name="status">${["未完成", "等待中", "已完成"].map((value) => `<option ${String(task?.status || "未完成") === value ? "selected" : ""}>${value}</option>`).join("")}</select></label>
         <label><span>提醒</span><select class="select" name="reminder_minutes">${[["", "不提醒"], ["0", "準時提醒"], ["10", "提前 10 分鐘"], ["60", "提前 1 小時"], ["1440", "提前 1 天"]].map(([value, label]) => `<option value="${value}" ${String(task?.reminder_minutes ?? "") === value ? "selected" : ""}>${label}</option>`).join("")}</select></label>
       </div>
+      <label><span>重複</span><select class="select" name="recurrence">${[["none", "不重複"], ["daily", "每天"], ["weekly", "每週"], ["monthly", "每月"]].map(([value, label]) => `<option value="${value}" ${String(task?.recurrence || "none") === value ? "selected" : ""}>${label}</option>`).join("")}</select></label>
       <label><span>所屬課程（選填）</span><select class="select" name="project_id"><option value="">我的工作</option>${state.workspace.projects.filter((project) => !projectFinished(project)).map((project) => `<option value="${escapeHTML(project.id)}" ${targetProjectId === project.id ? "selected" : ""}>${escapeHTML(project.course || project.teacher || "未命名專案")}</option>`).join("")}</select></label>
       <label><span>備註（選填）</span><textarea class="textarea" name="note" rows="3" placeholder="補充資訊、網址或處理方式">${escapeHTML(task?.note || "")}</textarea></label>
       <input type="hidden" name="task_id" value="${escapeHTML(task?.id || "")}"><input type="hidden" name="check_item_id" value="${escapeHTML(task?.linked_checklist_item_id || "")}">
-      <div class="modal-actions"><button type="button" class="ghost-button" data-close-modal>取消</button><button class="primary-button">儲存工作</button></div>
+      <div class="modal-actions split-actions">${task?.id ? `<button type="button" class="danger-button" data-task-delete="${escapeHTML(task.id)}">刪除工作</button>` : `<span></span>`}<div class="toolbar"><button type="button" class="ghost-button" data-close-modal>取消</button><button class="primary-button">儲存工作</button></div></div>
     </form></div>`;
   layer.querySelectorAll("[data-close-modal]").forEach((button) => button.addEventListener("click", closeModal));
+  layer.querySelector("[data-task-delete]")?.addEventListener("click", (event) => deleteTask(event.currentTarget.dataset.taskDelete));
   $("#taskForm").addEventListener("submit", saveTaskFromForm);
 }
 
@@ -1344,13 +1535,60 @@ function saveTaskFromForm(event) {
   const form = new FormData(event.currentTarget);
   const taskId = String(form.get("task_id") || "");
   const task = state.workspace.tasks.find((item) => item.id === taskId) || { id: uid("task"), project_id: String(form.get("project_id") || ""), created_at: new Date().toISOString().slice(0, 19), task_type: "一般工作" };
-  Object.assign(task, { title: String(form.get("title") || "").trim(), date: String(form.get("date") || ""), time: String(form.get("time") || ""), status: String(form.get("status") || "未完成"), project_id: String(form.get("project_id") || ""), reminder_minutes: String(form.get("reminder_minutes") || ""), note: String(form.get("note") || "").trim(), linked_checklist_item_id: String(form.get("check_item_id") || task.linked_checklist_item_id || "") });
+  const wasCompleted = task.status === STATUS_COMPLETED;
+  Object.assign(task, { title: String(form.get("title") || "").trim(), date: String(form.get("date") || ""), time: String(form.get("time") || ""), status: String(form.get("status") || "未完成"), project_id: String(form.get("project_id") || ""), reminder_minutes: String(form.get("reminder_minutes") || ""), recurrence: String(form.get("recurrence") || "none"), recurrence_series_id: task.recurrence_series_id || task.id, note: String(form.get("note") || "").trim(), linked_checklist_item_id: String(form.get("check_item_id") || task.linked_checklist_item_id || ""), updated_at: new Date().toISOString() });
   if (!taskId) state.workspace.tasks.push(task);
+  if (!wasCompleted && task.status === STATUS_COMPLETED) completeTask(task);
   if (task.linked_checklist_item_id) {
     state.workspace.checklists.forEach((group) => (group.items || []).forEach((item) => { if (item.id === task.linked_checklist_item_id) item.linked_task_id = task.id; }));
   }
   addHistory(`${taskId ? "更新" : "新增"}工作排程「${task.title}」`, task.project_id, "task");
   saveWorkspace(); closeModal(); showToast("工作排程已儲存"); render();
+}
+
+function recurrenceDate(task) {
+  const date = parseDate(task.date);
+  if (!date || !task.recurrence || task.recurrence === "none") return "";
+  if (task.recurrence === "daily") date.setDate(date.getDate() + 1);
+  if (task.recurrence === "weekly") date.setDate(date.getDate() + 7);
+  if (task.recurrence === "monthly") {
+    const targetDay = date.getDate();
+    date.setDate(1);
+    date.setMonth(date.getMonth() + 1);
+    const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+    date.setDate(Math.min(targetDay, lastDay));
+  }
+  return dateISO(date);
+}
+
+function completeTask(task) {
+  task.status = STATUS_COMPLETED;
+  task.completed_at = new Date().toISOString().slice(0, 19);
+  task.updated_at = new Date().toISOString();
+  if (task.task_type === TASK_TYPE_PHONE) task.phone_status = "已聯繫";
+  const nextDate = recurrenceDate(task);
+  if (!nextDate) return;
+  const seriesId = task.recurrence_series_id || task.id;
+  const exists = state.workspace.tasks.some((item) => item.recurrence_series_id === seriesId && item.date === nextDate && item.status !== STATUS_COMPLETED);
+  if (!exists) state.workspace.tasks.push({ ...task, id: uid("task"), date: nextDate, status: "未完成", phone_status: task.task_type === TASK_TYPE_PHONE ? "待聯繫" : task.phone_status, completed_at: "", snooze_until: "", recurrence_series_id: seriesId, created_at: new Date().toISOString().slice(0, 19), updated_at: new Date().toISOString() });
+}
+
+function deleteTask(taskId) {
+  const task = state.workspace.tasks.find((item) => item.id === taskId);
+  if (!task || !confirm(`確定刪除「${task.title || "這項工作"}」？`)) return;
+  markDeleted(taskId);
+  state.workspace.tasks = state.workspace.tasks.filter((item) => item.id !== taskId);
+  state.workspace.checklists.forEach((group) => (group.items || []).forEach((item) => { if (item.linked_task_id === taskId) item.linked_task_id = ""; }));
+  saveWorkspace(); closeModal(); showToast("工作已刪除"); render();
+}
+
+function snoozeTask(taskId) {
+  const task = state.workspace.tasks.find((item) => item.id === taskId);
+  if (!task) return;
+  const value = new Date(); value.setMinutes(value.getMinutes() + 10);
+  task.snooze_until = `${dateISO(value)}T${String(value.getHours()).padStart(2, "0")}:${String(value.getMinutes()).padStart(2, "0")}`;
+  task.updated_at = new Date().toISOString();
+  saveWorkspace(); showToast("提醒已延後 10 分鐘");
 }
 
 function postponeTask(taskId) {
@@ -1365,6 +1603,7 @@ function postponeTask(taskId) {
 function deleteSelectedTasks() {
   const ids = [...state.selectedTaskIds];
   if (!ids.length || !confirm(`確定刪除已勾選的 ${ids.length} 件工作？`)) return;
+  ids.forEach(markDeleted);
   state.workspace.tasks = state.workspace.tasks.filter((task) => !state.selectedTaskIds.has(task.id));
   state.selectedTaskIds.clear();
   saveWorkspace(); showToast("已刪除所選工作"); render();
@@ -1399,6 +1638,7 @@ function toggleChecklistItem(groupId, itemId, done) {
 function deleteChecklistItem(groupId, itemId) {
   const found = findChecklistItem(groupId, itemId);
   if (!found.group || !confirm("確定刪除這個清單項目？")) return;
+  markDeleted(itemId);
   found.group.items = found.group.items.filter((item) => item.id !== itemId);
   saveWorkspace(); render();
 }
@@ -1412,6 +1652,7 @@ function renameChecklistGroup(groupId) {
 
 function deleteChecklistGroup(groupId) {
   if (!confirm("確定刪除整份清單？")) return;
+  markDeleted(groupId);
   state.workspace.checklists = state.workspace.checklists.filter((item) => item.id !== groupId);
   saveWorkspace(); render();
 }
@@ -1454,6 +1695,7 @@ function addProjectMessage(event) {
 
 function deleteProjectMessage(messageId) {
   if (!confirm("確定刪除這則留言？")) return;
+  markDeleted(messageId);
   state.workspace.project_messages = state.workspace.project_messages.filter((item) => item.id !== messageId);
   saveWorkspace(); showToast("已刪除留言"); render();
 }
@@ -1537,11 +1779,20 @@ async function initializeApp() {
   try {
     await loadCloudWorkspace();
     await registerServiceWorker();
+    const url = new URL(window.location.href);
+    const snoozeId = url.searchParams.get("snooze");
+    if (snoozeId) {
+      snoozeTask(snoozeId);
+      url.searchParams.delete("snooze");
+      window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+    }
     if (indicator) indicator.textContent = "已連線雲端";
     render();
   } catch (error) {
-    if (indicator) indicator.textContent = "連線失敗";
-    showToast(error.message);
+    if (indicator) indicator.textContent = "離線資料模式";
+    showToast("無法連線雲端，已載入這台裝置的最近資料");
+    await registerServiceWorker().catch(() => null);
+    render();
   }
 }
 
