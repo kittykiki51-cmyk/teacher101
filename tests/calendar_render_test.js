@@ -9,7 +9,7 @@ const source = $.NSString.stringWithContentsOfFileEncodingError(sourcePath, $.NS
 const testableSource = source.replace(/\ninitializeApp\(\);\s*$/, "");
 const storage = { getItem: () => null, setItem: () => null, removeItem: () => null };
 const browserWindow = { location: { protocol: "file:" }, INITIAL_WORKSPACE: null };
-const harness = new Function("window", "localStorage", `${testableSource}\nreturn { state, todayISO, parseDate, renderMonthCalendar, renderWeekCalendar, renderDayCalendar, renderCalendarPanel, calendarColor, calendarHours };`)(browserWindow, storage);
+const harness = new Function("window", "localStorage", `${testableSource}\nreturn { state, todayISO, parseDate, renderMonthCalendar, renderWeekCalendar, renderDayCalendar, renderCalendarPanel, renderMobileCalendarAgenda, calendarColor, calendarHours };`)(browserWindow, storage);
 
 const today = harness.todayISO();
 harness.state.workspace = {
@@ -46,5 +46,10 @@ assert(panel.includes("延後一天"), "Selected-date panel should include postp
 assert(panel.includes("data-calendar-delete"), "Selected-date panel should include delete actions");
 assert(harness.calendarColor(harness.state.workspace.tasks[0]).color === "#5166e6", "Personal tasks should use royal blue");
 assert(harness.calendarHours([{ time: "06:30" }, { time: "23:00" }]).join(",") === Array.from({ length: 18 }, (_, index) => index + 6).join(","), "Time grid should include early and late tasks");
+
+const mobileAgenda = harness.renderMobileCalendarAgenda(anchor, harness.state.workspace.tasks, "測試日期");
+assert(mobileAgenda.includes("mobile-date-strip"), "Mobile agenda should render a seven-day date strip");
+assert(mobileAgenda.includes('data-calendar-inline'), "Mobile date selection should stay in the inline agenda");
+assert(mobileAgenda.includes("查看完整月曆"), "Mobile agenda should preserve access to the month calendar");
 
 console.log("calendar render tests: passed");

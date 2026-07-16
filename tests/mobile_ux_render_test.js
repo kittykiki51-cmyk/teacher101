@@ -12,7 +12,7 @@ const source = read("../app.js");
 const testableSource = source.replace(/\ninitializeApp\(\);\s*$/, "");
 const storage = { getItem: () => null, setItem: () => null, removeItem: () => null };
 const browserWindow = { location: { protocol: "file:" }, INITIAL_WORKSPACE: null };
-const harness = new Function("window", "localStorage", `${testableSource}\nreturn { state, todayISO, monthKey, renderDashboard, renderProjectDetail, renderSettings, taskList };`)(browserWindow, storage);
+const harness = new Function("window", "localStorage", `${testableSource}\nreturn { state, todayISO, monthKey, renderDashboard, renderProjectDetail, renderSettings, renderCalendar, taskList };`)(browserWindow, storage);
 
 const today = harness.todayISO();
 const currentMonth = harness.monthKey(new Date());
@@ -45,6 +45,8 @@ assert(dashboard.includes("today-work-panel"), "Dashboard should identify today'
 assert(dashboard.includes("data-phone-add"), "Dashboard should provide a working phone-add action");
 assert(dashboard.includes(`data-complete=\"${generalTask.id}\"`), "Today's work should provide a direct complete action");
 assert(dashboard.includes(`data-task-edit=\"${generalTask.id}\"`), "Today's work should provide a direct edit action");
+assert(dashboard.includes("mobile-task-complete"), "Mobile tasks should provide a one-tap completion control");
+assert(dashboard.includes("task-overflow"), "Secondary mobile task actions should use an overflow menu");
 
 const phoneList = harness.taskList([phoneTask], "", true);
 assert(phoneList.includes(`data-task-edit=\"${phoneTask.id}\"`), "Phone tasks should remain editable");
@@ -68,16 +70,24 @@ assert(source.includes("window.visualViewport"), "Mobile dialogs should follow t
 assert(source.includes('type="month" name="target_month"'), "Project month should use the device month picker");
 assert(source.includes('type="date" name="target_date"'), "Project date should use the device date picker");
 assert(source.includes('name="teacher" required') && source.includes('autocomplete="off"'), "Teacher name should not request contact autofill");
+assert(source.includes("project-form-tabs"), "Project forms should provide mobile sections");
+assert(source.includes('data-project-form-section="basic"') && source.includes('data-project-form-section="schedule"') && source.includes('data-project-form-section="links"'), "All project form sections should be available");
+
+const calendar = harness.renderCalendar();
+assert(calendar.includes("mobile-calendar-agenda"), "Calendar should provide an agenda-first mobile view");
+assert(calendar.includes("mobile-date-strip"), "Mobile calendar should provide a seven-day date strip");
+assert(calendar.includes("data-mobile-month-toggle"), "Full month view should remain available on mobile");
 
 const styles = read("../styles.css");
 assert(styles.includes(".project-mobile-tabs"), "Mobile project tab styles should exist");
 assert(styles.includes("place-items: end stretch"), "Mobile dialogs should open as bottom sheets");
 assert(styles.includes("env(safe-area-inset-bottom)"), "Mobile controls should account for device safe areas");
+assert(styles.includes("position: sticky") && styles.includes("top: 84px"), "Mobile project tabs should remain visible while scrolling");
 
 const index = read("../index.html");
 assert(index.includes("mobile-button-label"), "Mobile top bar should use a compact add label");
 
 const worker = read("../service-worker.js");
-assert(worker.includes('teacher-operations-v4'), "PWA cache should be refreshed for keyboard-adaptive dialogs");
+assert(worker.includes('teacher-operations-v5'), "PWA cache should be refreshed for the mobile workflow update");
 
 console.log("mobile UX render tests: passed");

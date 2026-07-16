@@ -189,7 +189,14 @@ button {
 .mobile-button-label,
 .mobile-project-back,
 .project-mobile-tabs,
-.mobile-account-panel {
+.mobile-account-panel,
+.mobile-calendar-agenda,
+.task-overflow,
+.project-form-tabs {
+  display: none;
+}
+
+.mobile-project-task-complete {
   display: none;
 }
 
@@ -438,6 +445,17 @@ button {
   padding: 3px 0;
 }
 
+.mobile-task-content,
+.compact-task-content,
+.calendar-panel-task-copy {
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  text-align: left;
+}
+
 .home-task-row strong {
   font-size: 16px;
 }
@@ -459,6 +477,9 @@ button {
 }
 
 .task-dot {
+  border: 0;
+  background: transparent;
+  padding: 0;
   font-weight: 800;
   color: var(--muted);
 }
@@ -1176,8 +1197,10 @@ button:disabled {
   width: 8px;
   height: 8px;
   flex: 0 0 auto;
+  border: 0;
   border-radius: 50%;
   background: var(--event-color);
+  padding: 0;
 }
 
 .calendar-add-button {
@@ -1687,6 +1710,11 @@ button.day-cell:hover {
   gap: 10px;
 }
 
+.project-form-section {
+  display: grid;
+  gap: 10px;
+}
+
 .form-grid label {
   display: grid;
   gap: 6px;
@@ -2024,7 +2052,8 @@ button.day-cell:hover {
   }
 
   .home-task-row {
-    grid-template-columns: 16px minmax(0, 1fr);
+    grid-template-columns: 28px minmax(0, 1fr) 34px;
+    align-items: center;
     gap: 3px 6px;
     border-bottom: 1px solid var(--border);
     padding: 8px 0;
@@ -2044,8 +2073,7 @@ button.day-cell:hover {
   }
 
   .home-task-actions {
-    grid-column: 2;
-    display: flex;
+    display: none;
   }
 
   .home-task-actions .small-button {
@@ -2165,6 +2193,9 @@ button.day-cell:hover {
   }
 
   .project-mobile-tabs {
+    position: sticky;
+    top: 84px;
+    z-index: 17;
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     margin-bottom: 8px;
@@ -2172,6 +2203,7 @@ button.day-cell:hover {
     border: 1px solid var(--border);
     border-radius: 7px;
     background: var(--surface);
+    box-shadow: 0 5px 12px rgba(26, 42, 53, 0.07);
   }
 
   .mobile-account-panel {
@@ -2220,20 +2252,18 @@ button.day-cell:hover {
   }
 
   .compact-task-row {
-    grid-template-columns: 22px minmax(0, 1fr);
-    align-items: start;
+    grid-template-columns: 28px minmax(0, 1fr) 34px;
+    align-items: center;
     padding: 9px 8px;
   }
 
+  .compact-task-row > input[type="checkbox"],
   .compact-task-row > .toolbar {
-    grid-column: 2;
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    width: 100%;
+    display: none;
   }
 
-  .compact-task-row > .toolbar button {
-    min-height: 32px;
+  .mobile-project-task-complete {
+    grid-column: 1;
   }
 
   .checklist-group-head {
@@ -2268,9 +2298,8 @@ button.day-cell:hover {
     font-size: 11px;
   }
 
-  .calendar-card .card-header {
-    display: grid;
-    gap: 7px;
+  .calendar-main-header {
+    display: none !important;
   }
 
   .calendar-card .card-header h3 {
@@ -2308,11 +2337,126 @@ button.day-cell:hover {
   }
 
   .calendar-filters .primary-button {
-    grid-column: 1 / -1;
+    display: none;
   }
 
   .calendar-layout {
+    display: none;
+  }
+
+  .mobile-calendar-agenda {
+    display: grid;
     gap: 10px;
+  }
+
+  .mobile-agenda-navigation {
+    display: grid;
+    grid-template-columns: 36px 50px minmax(0, 1fr) 36px;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .mobile-agenda-navigation > strong {
+    overflow: hidden;
+    color: var(--muted);
+    font-size: 11px;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobile-agenda-navigation .icon-button,
+  .mobile-agenda-navigation .small-button {
+    min-width: 0;
+    min-height: 34px;
+    padding: 0;
+  }
+
+  .mobile-date-strip {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 4px;
+  }
+
+  .mobile-date-button {
+    position: relative;
+    min-width: 0;
+    min-height: 58px;
+    display: grid;
+    place-items: center;
+    align-content: center;
+    gap: 2px;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    background: var(--surface-alt);
+    color: var(--muted);
+    padding: 5px 1px;
+  }
+
+  .mobile-date-button span {
+    font-size: 9px;
+  }
+
+  .mobile-date-button strong {
+    font-size: 14px;
+  }
+
+  .mobile-date-button i {
+    position: absolute;
+    right: 3px;
+    bottom: 3px;
+    min-width: 14px;
+    height: 14px;
+    border-radius: 7px;
+    background: var(--primary-soft);
+    color: var(--primary);
+    font-size: 8px;
+    font-style: normal;
+    line-height: 14px;
+  }
+
+  .mobile-date-button.today strong {
+    color: var(--primary);
+  }
+
+  .mobile-date-button.selected {
+    border-color: var(--primary);
+    background: var(--primary);
+    color: var(--primary-contrast);
+  }
+
+  .mobile-date-button.selected strong,
+  .mobile-date-button.selected i {
+    color: var(--primary-contrast);
+  }
+
+  .mobile-date-button.selected i {
+    background: rgba(255, 255, 255, 0.2);
+  }
+
+  .mobile-agenda-list {
+    display: grid;
+    gap: 8px;
+    border-top: 1px solid var(--border);
+    padding-top: 10px;
+  }
+
+  .mobile-month-toggle {
+    min-height: 36px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+    color: var(--primary);
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .mobile-month-calendar {
+    display: none;
+  }
+
+  .mobile-month-calendar.open {
+    display: block;
   }
 
   .calendar-view-main {
@@ -2491,8 +2635,15 @@ button.day-cell:hover {
   }
 
   .calendar-panel-task {
-    gap: 7px;
-    padding: 8px;
+    position: relative;
+    gap: 5px;
+    padding: 9px;
+  }
+
+  .calendar-panel-task-main {
+    grid-template-columns: 28px minmax(0, 1fr) 34px;
+    align-items: center;
+    gap: 6px;
   }
 
   .calendar-panel-title {
@@ -2506,7 +2657,7 @@ button.day-cell:hover {
   }
 
   .calendar-panel-actions {
-    padding-left: 17px;
+    display: none;
   }
 
   .calendar-panel-actions .small-button,
@@ -2671,6 +2822,129 @@ button.day-cell:hover {
   .modal-card input[type="time"] {
     appearance: auto;
     min-width: 0;
+  }
+
+  .project-form-tabs {
+    position: sticky;
+    top: 48px;
+    z-index: 2;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    overflow: hidden;
+    margin: -2px 0 2px;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    background: var(--surface);
+  }
+
+  .project-form-tabs button {
+    min-height: 38px;
+    border: 0;
+    border-right: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--muted);
+    font-size: 11px;
+  }
+
+  .project-form-tabs button:last-child {
+    border-right: 0;
+  }
+
+  .project-form-tabs button.active {
+    background: var(--primary-soft);
+    color: var(--primary);
+    font-weight: 800;
+  }
+
+  .project-form-section {
+    display: none;
+    gap: 10px;
+  }
+
+  .project-form-section.active {
+    display: grid;
+  }
+
+  .mobile-task-complete {
+    width: 28px;
+    height: 28px;
+    display: grid;
+    place-items: center;
+    border: 2px solid var(--primary);
+    border-radius: 50%;
+    background: var(--surface);
+    color: var(--primary);
+    padding: 0;
+    font-size: 17px;
+    line-height: 1;
+  }
+
+  .calendar-task-color.mobile-task-complete {
+    margin-top: 0;
+    background: var(--surface);
+  }
+
+  .mobile-task-content {
+    display: block;
+    width: 100%;
+  }
+
+  .task-overflow {
+    position: relative;
+    display: block;
+  }
+
+  .task-overflow summary {
+    width: 34px;
+    height: 34px;
+    display: grid;
+    place-items: center;
+    border-radius: 6px;
+    color: var(--muted);
+    font-size: 20px;
+    font-weight: 800;
+    list-style: none;
+  }
+
+  .task-overflow summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .task-overflow[open] summary {
+    background: var(--primary-soft);
+    color: var(--primary);
+  }
+
+  .task-overflow-menu {
+    position: absolute;
+    right: 0;
+    z-index: 19;
+    min-width: 124px;
+    display: grid;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    background: var(--surface);
+    box-shadow: 0 10px 28px rgba(26, 42, 53, 0.16);
+  }
+
+  .task-overflow-menu button {
+    min-height: 38px;
+    border: 0;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    padding: 0 12px;
+    font-size: 11px;
+    text-align: left;
+  }
+
+  .task-overflow-menu button:last-child {
+    border-bottom: 0;
+  }
+
+  .task-overflow-menu .danger-text {
+    color: var(--red);
   }
 
   .form-grid label {

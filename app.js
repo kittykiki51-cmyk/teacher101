@@ -38,6 +38,7 @@ let state = {
   calendarQuery: "",
   calendarStatusFilter: "全部",
   calendarView: "month",
+  calendarMobileMonthOpen: false,
   calendarMobilePanelOpen: false,
   projectMobileTab: "work",
   globalQuery: "",
@@ -528,15 +529,27 @@ function homeTaskRows(tasks, emptyText) {
     const statusTone = task.status === STATUS_WAITING ? "amber" : task.date && task.date < todayISO() ? "red" : "muted-dot";
     return `
       <div class="home-task-row">
-        <span class="task-dot ${statusTone}">○</span>
-        <div>
+        <button type="button" class="task-dot mobile-task-complete ${statusTone}" data-complete="${escapeHTML(task.id)}" aria-label="完成 ${escapeHTML(task.title || "未命名工作")}">○</button>
+        <button type="button" class="mobile-task-content" data-task-edit="${escapeHTML(task.id)}">
           <strong>${escapeHTML(task.title || "未命名工作")}</strong>
           <p class="muted">截止：${humanDate(task.date)} ${escapeHTML(task.time || "")}${project ? `｜${escapeHTML(project.course || "")}` : ""}</p>
-        </div>
+        </button>
         <div class="home-task-actions"><button class="small-button" data-complete="${escapeHTML(task.id)}">完成</button><button class="small-button" data-task-edit="${escapeHTML(task.id)}">編輯</button></div>
+        ${taskOverflowMenu(task, { postpone: true })}
       </div>
     `;
   }).join("");
+}
+
+function taskOverflowMenu(task, options = {}) {
+  return `<details class="task-overflow">
+    <summary aria-label="更多工作操作" title="更多工作操作">⋯</summary>
+    <div class="task-overflow-menu">
+      ${options.postpone ? `<button type="button" data-postpone="${escapeHTML(task.id)}">延後一天</button>` : ""}
+      <button type="button" data-task-edit="${escapeHTML(task.id)}">編輯</button>
+      ${options.delete ? `<button type="button" class="danger-text" data-calendar-delete="${escapeHTML(task.id)}">刪除</button>` : ""}
+    </div>
+  </details>`;
 }
 
 function pipelineColumn(role) {
@@ -764,8 +777,10 @@ function renderProjectTask(task) {
   const status = task.status === STATUS_WAITING ? "等待中" : "未完成";
   return `<div class="compact-task-row">
     <input type="checkbox" data-task-select="${escapeHTML(task.id)}" ${selected ? "checked" : ""} aria-label="選取工作">
-    <div><strong class="${task.status === STATUS_WAITING ? "amber-text" : ""}">${status}　${escapeHTML(task.title || "未命名工作")}</strong><small>${humanDate(task.date)} ${escapeHTML(task.time || "")}</small></div>
+    <button type="button" class="mobile-project-task-complete mobile-task-complete" data-complete="${escapeHTML(task.id)}" aria-label="完成 ${escapeHTML(task.title || "未命名工作")}">○</button>
+    <button type="button" class="compact-task-content mobile-task-content" data-task-edit="${escapeHTML(task.id)}"><strong class="${task.status === STATUS_WAITING ? "amber-text" : ""}">${status}　${escapeHTML(task.title || "未命名工作")}</strong><small>${humanDate(task.date)} ${escapeHTML(task.time || "")}</small></button>
     <div class="toolbar"><button class="primary-button compact-button" data-complete="${escapeHTML(task.id)}">完成</button><button class="ghost-button compact-button" data-postpone="${escapeHTML(task.id)}">延後</button><button class="ghost-button compact-button" data-task-edit="${escapeHTML(task.id)}">編輯</button></div>
+    ${taskOverflowMenu(task, { postpone: true })}
   </div>`;
 }
 
@@ -891,8 +906,9 @@ function renderCalendarPanelTask(task) {
   const completed = task.status === STATUS_COMPLETED;
   return `<article class="calendar-panel-task ${completed ? "completed" : ""}" style="${calendarColorStyle(task)}">
     <div class="calendar-panel-task-main">
-      <span class="calendar-task-color" aria-hidden="true"></span>
-      <div><p class="calendar-panel-title">${escapeHTML(task.title || "未命名工作")}</p><p class="calendar-panel-meta">${escapeHTML(task.time || "全天")} · ${escapeHTML(project?.course || "我的工作")}${task.reminder_minutes !== undefined && task.reminder_minutes !== "" ? ` · ${escapeHTML(reminderLabel(task.reminder_minutes))}` : ""}</p>${task.note ? `<p class="calendar-panel-note">${escapeHTML(task.note)}</p>` : ""}</div>
+      ${completed ? `<span class="calendar-task-color" aria-hidden="true"></span>` : `<button type="button" class="calendar-task-color mobile-task-complete" data-complete="${escapeHTML(task.id)}" aria-label="完成 ${escapeHTML(task.title || "未命名工作")}"></button>`}
+      <button type="button" class="calendar-panel-task-copy mobile-task-content" data-task-edit="${escapeHTML(task.id)}"><p class="calendar-panel-title">${escapeHTML(task.title || "未命名工作")}</p><p class="calendar-panel-meta">${escapeHTML(task.time || "全天")} · ${escapeHTML(project?.course || "我的工作")}${task.reminder_minutes !== undefined && task.reminder_minutes !== "" ? ` · ${escapeHTML(reminderLabel(task.reminder_minutes))}` : ""}</p>${task.note ? `<p class="calendar-panel-note">${escapeHTML(task.note)}</p>` : ""}</button>
+      ${completed ? "" : taskOverflowMenu(task, { postpone: true, delete: true })}
     </div>
     <div class="calendar-panel-actions">
       ${completed ? pill("已完成", "green") : `<button class="small-button" data-complete="${escapeHTML(task.id)}">完成</button><button class="small-button" data-postpone="${escapeHTML(task.id)}">延後一天</button>`}
@@ -929,6 +945,7 @@ function renderCalendar() {
       <select class="select" id="calendarStatusFilter" aria-label="工作狀態篩選">${["全部", "未完成", "已完成"].map((value) => `<option ${state.calendarStatusFilter === value ? "selected" : ""}>${value}</option>`).join("")}</select>
       <button class="primary-button" data-calendar-add="${escapeHTML(selectedDate)}">新增工作</button>
     </div>
+    ${renderMobileCalendarAgenda(anchor, selectedTasks, selectedDateLabel)}
     <div class="grid calendar-layout ${state.calendarView}-view-layout">
       <div class="calendar-view-main">${state.calendarView === "month" ? renderMonthCalendar(anchor) : state.calendarView === "week" ? renderWeekCalendar(anchor) : renderDayCalendar(anchor)}</div>
       <button type="button" class="calendar-sheet-backdrop ${state.calendarMobilePanelOpen ? "open" : ""}" data-calendar-panel-close aria-label="關閉所選日期工作"></button>
@@ -938,6 +955,38 @@ function renderCalendar() {
       </aside>
     </div>
   </section>`;
+}
+
+function renderMobileCalendarAgenda(anchor, selectedTasks, selectedDateLabel) {
+  const start = weekStart(anchor);
+  const dates = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(start);
+    date.setDate(start.getDate() + index);
+    return date;
+  });
+  return `<div class="mobile-calendar-agenda">
+    <div class="mobile-agenda-navigation">
+      <button type="button" class="icon-button" data-mobile-calendar-shift="-7" aria-label="上一週">‹</button>
+      <button type="button" class="small-button" data-mobile-calendar-today>今天</button>
+      <strong>${escapeHTML(weekRangeLabel(anchor))}</strong>
+      <button type="button" class="icon-button" data-mobile-calendar-shift="7" aria-label="下一週">›</button>
+    </div>
+    <div class="mobile-date-strip">
+      ${dates.map((date) => {
+        const iso = dateISO(date);
+        const count = tasksOnDate(iso).length;
+        return `<button type="button" class="mobile-date-button ${iso === todayISO() ? "today" : ""} ${iso === state.selectedCalendarDate ? "selected" : ""}" data-calendar-date="${iso}" data-calendar-inline>
+          <span>${["日", "一", "二", "三", "四", "五", "六"][date.getDay()]}</span><strong>${date.getDate()}</strong>${count ? `<i>${count}</i>` : ""}
+        </button>`;
+      }).join("")}
+    </div>
+    <section class="mobile-agenda-list">
+      <div class="calendar-day-header"><div><p class="calendar-day-kicker">${state.selectedCalendarDate === todayISO() ? "今日工作項目" : "當日工作項目"}</p><h4>${escapeHTML(selectedDateLabel)}</h4></div><div class="toolbar">${pill(`${selectedTasks.length} 件`, selectedTasks.length ? "green" : "gray")}<button class="icon-button calendar-add-button" data-calendar-add="${escapeHTML(state.selectedCalendarDate)}" title="新增工作">＋</button></div></div>
+      <div class="calendar-panel-list">${renderCalendarPanel(selectedTasks)}</div>
+    </section>
+    <button type="button" class="mobile-month-toggle" data-mobile-month-toggle aria-expanded="${state.calendarMobileMonthOpen}">${state.calendarMobileMonthOpen ? "收起完整月曆" : "查看完整月曆"}</button>
+    <div class="mobile-month-calendar ${state.calendarMobileMonthOpen ? "open" : ""}">${renderMonthCalendar(anchor)}</div>
+  </div>`;
 }
 
 function renderMonthCalendar(anchor) {
@@ -1280,6 +1329,21 @@ function bindContentEvents() {
     render();
   }));
 
+  document.querySelectorAll("[data-mobile-calendar-shift]").forEach((button) => button.addEventListener("click", () => {
+    const anchor = parseDate(state.selectedCalendarDate) || new Date();
+    anchor.setDate(anchor.getDate() + Number(button.dataset.mobileCalendarShift));
+    selectCalendarDate(dateISO(anchor), false);
+    render();
+  }));
+  document.querySelectorAll("[data-mobile-calendar-today]").forEach((button) => button.addEventListener("click", () => {
+    selectCalendarDate(todayISO(), false);
+    render();
+  }));
+  document.querySelectorAll("[data-mobile-month-toggle]").forEach((button) => button.addEventListener("click", () => {
+    state.calendarMobileMonthOpen = !state.calendarMobileMonthOpen;
+    render();
+  }));
+
   document.querySelectorAll("[data-period]").forEach((button) => {
     button.addEventListener("click", () => navigateCalendarPeriod(Number(button.dataset.period)));
   });
@@ -1308,7 +1372,7 @@ function bindContentEvents() {
       if (isDoubleActivation) {
         lastCalendarTarget = null;
         lastCalendarClickAt = 0;
-        selectCalendarDate(button.dataset.calendarDate);
+        selectCalendarDate(button.dataset.calendarDate, !button.hasAttribute("data-calendar-inline"));
         render();
         openTaskDialog({ date: state.selectedCalendarDate, status: "未完成", reminder_minutes: "0" });
         return;
@@ -1318,7 +1382,7 @@ function bindContentEvents() {
       calendarSelectionTimer = window.setTimeout(() => {
         lastCalendarTarget = null;
         lastCalendarClickAt = 0;
-        selectCalendarDate(button.dataset.calendarDate);
+        selectCalendarDate(button.dataset.calendarDate, !button.hasAttribute("data-calendar-inline"));
         render();
       }, 300);
     });
@@ -1572,46 +1636,57 @@ function openProjectDialog(project = null) {
         </div>
         <button class="icon-button" data-close-modal>×</button>
       </div>
-      <form class="form-grid" id="projectForm" autocomplete="off">
-        <label>
-          <span>老師名稱</span>
-          <input class="search-input" name="teacher" required value="${escapeHTML(project?.teacher || "")}" placeholder="例如：林老師" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
-        </label>
-        <label>
-          <span>課程名稱</span>
-          <input class="search-input" name="course" required value="${escapeHTML(project?.course || "")}" placeholder="例如：AI 角色影音創作" autocomplete="off" autocorrect="off" spellcheck="false">
-        </label>
-        <div class="two-col">
+      <form class="form-grid" id="projectForm" autocomplete="off" novalidate>
+        <nav class="project-form-tabs" aria-label="專案資料分區">
+          <button type="button" class="active" data-project-form-tab="basic" aria-selected="true">基本資料</button>
+          <button type="button" data-project-form-tab="schedule" aria-selected="false">進度安排</button>
+          <button type="button" data-project-form-tab="links" aria-selected="false">相關連結</button>
+        </nav>
+        <section class="project-form-section active" data-project-form-section="basic">
           <label>
-            <span>目標月份</span>
-            <input class="search-input" type="month" name="target_month" value="${escapeHTML(project?.target_month || currentMonth)}" required>
+            <span>老師名稱</span>
+            <input class="search-input" name="teacher" required value="${escapeHTML(project?.teacher || "")}" placeholder="例如：林老師" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
           </label>
           <label>
-            <span>預計上架日</span>
-            <input class="search-input" type="date" name="target_date" value="${escapeHTML(project?.target_date || "")}" required>
+            <span>課程名稱</span>
+            <input class="search-input" name="course" required value="${escapeHTML(project?.course || "")}" placeholder="例如：AI 角色影音創作" autocomplete="off" autocorrect="off" spellcheck="false">
           </label>
-        </div>
-        <div class="three-col">
+        </section>
+        <section class="project-form-section" data-project-form-section="schedule">
+          <div class="two-col">
+            <label>
+              <span>目標月份</span>
+              <input class="search-input" type="month" name="target_month" value="${escapeHTML(project?.target_month || currentMonth)}" required>
+            </label>
+            <label>
+              <span>預計上架日</span>
+              <input class="search-input" type="date" name="target_date" value="${escapeHTML(project?.target_date || "")}" required>
+            </label>
+          </div>
+          <div class="three-col">
+            <label>
+              <span>角色</span>
+              <select class="select" name="role">${["未設定", "正式", "候補", "下月前置", "觀察"].map((value) => `<option ${(project?.role || ROLE_UNSET) === value ? "selected" : ""}>${value}</option>`).join("")}</select>
+            </label>
+            <label>
+              <span>類型</span>
+              <select class="select" name="mode">${["錄播", "直播"].map((value) => `<option ${(project?.mode === "live" ? "直播" : "錄播") === value ? "selected" : ""}>${value}</option>`).join("")}</select>
+            </label>
+            <label>
+              <span>合作</span>
+              <select class="select" name="cooperation">${["順利", "需觀察", "暫緩"].map((value) => `<option ${(project?.cooperation_status || "順利") === value ? "selected" : ""}>${value}</option>`).join("")}</select>
+            </label>
+          </div>
           <label>
-            <span>角色</span>
-            <select class="select" name="role">${["未設定", "正式", "候補", "下月前置", "觀察"].map((value) => `<option ${(project?.role || ROLE_UNSET) === value ? "selected" : ""}>${value}</option>`).join("")}</select>
+            <span>目前階段</span>
+            <select class="select" name="stage">${[...STAGE_NAMES, "已上架", "已完成", "已放棄"].map((value) => `<option ${(project?.status === "已完成" ? "已完成" : project?.status === "已上架" ? "已上架" : project?.status === "已放棄" ? "已放棄" : project?.current_stage || STAGE_NAMES[0]) === value ? "selected" : ""}>${value}</option>`).join("")}</select>
           </label>
-          <label>
-            <span>類型</span>
-            <select class="select" name="mode">${["錄播", "直播"].map((value) => `<option ${(project?.mode === "live" ? "直播" : "錄播") === value ? "selected" : ""}>${value}</option>`).join("")}</select>
-          </label>
-          <label>
-            <span>合作</span>
-            <select class="select" name="cooperation">${["順利", "需觀察", "暫緩"].map((value) => `<option ${(project?.cooperation_status || "順利") === value ? "selected" : ""}>${value}</option>`).join("")}</select>
-          </label>
-        </div>
-        <label>
-          <span>目前階段</span>
-          <select class="select" name="stage">${[...STAGE_NAMES, "已上架", "已完成", "已放棄"].map((value) => `<option ${(project?.status === "已完成" ? "已完成" : project?.status === "已上架" ? "已上架" : project?.status === "已放棄" ? "已放棄" : project?.current_stage || STAGE_NAMES[0]) === value ? "selected" : ""}>${value}</option>`).join("")}</select>
-        </label>
-        <label><span>雲端資料夾</span><input class="search-input" type="url" inputmode="url" name="cloud" value="${escapeHTML(project?.links?.["雲端資料夾"] || "")}" placeholder="https://..." autocomplete="off"></label>
-        <label><span>課程頁</span><input class="search-input" type="url" inputmode="url" name="course_link" value="${escapeHTML(project?.links?.["課程頁"] || "")}" placeholder="https://..." autocomplete="off"></label>
-        ${project ? "" : `<label><span>建立時套用檢查清單</span><select class="select" name="template"><option value="">不套用</option>${(state.workspace.checklist_templates || []).map((item) => `<option value="${escapeHTML(item.id)}">${escapeHTML(item.name || "未命名範本")}</option>`).join("")}</select></label>`}
+          ${project ? "" : `<label><span>建立時套用檢查清單</span><select class="select" name="template"><option value="">不套用</option>${(state.workspace.checklist_templates || []).map((item) => `<option value="${escapeHTML(item.id)}">${escapeHTML(item.name || "未命名範本")}</option>`).join("")}</select></label>`}
+        </section>
+        <section class="project-form-section" data-project-form-section="links">
+          <label><span>雲端資料夾</span><input class="search-input" type="url" inputmode="url" name="cloud" value="${escapeHTML(project?.links?.["雲端資料夾"] || "")}" placeholder="https://..." autocomplete="off"></label>
+          <label><span>課程頁</span><input class="search-input" type="url" inputmode="url" name="course_link" value="${escapeHTML(project?.links?.["課程頁"] || "")}" placeholder="https://..." autocomplete="off"></label>
+        </section>
         <input type="hidden" name="project_id" value="${escapeHTML(project?.id || "")}">
         <div class="modal-actions split-actions">
           ${project ? `<button type="button" class="danger-button" data-project-delete="${escapeHTML(project.id)}">刪除專案</button>` : `<span></span>`}
@@ -1628,10 +1703,24 @@ function openProjectDialog(project = null) {
     if (event.target === layer) closeModal();
   }, { once: true });
   $("#projectForm").addEventListener("submit", saveProjectFromForm);
+  layer.querySelectorAll("[data-project-form-tab]").forEach((button) => button.addEventListener("click", () => {
+    activateProjectFormSection(layer, button.dataset.projectFormTab);
+  }));
   const deleteButton = layer.querySelector("[data-project-delete]");
   if (deleteButton) deleteButton.addEventListener("click", () => deleteProject(deleteButton.dataset.projectDelete));
   setupModalViewport(layer);
   if (!window.matchMedia("(max-width: 760px)").matches) layer.querySelector("input[name='teacher']").focus({ preventScroll: true });
+}
+
+function activateProjectFormSection(layer, sectionName) {
+  layer.querySelectorAll("[data-project-form-tab]").forEach((button) => {
+    const active = button.dataset.projectFormTab === sectionName;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", String(active));
+  });
+  layer.querySelectorAll("[data-project-form-section]").forEach((section) => {
+    section.classList.toggle("active", section.dataset.projectFormSection === sectionName);
+  });
 }
 
 function closeModal() {
@@ -1678,10 +1767,12 @@ function saveProjectFromForm(event) {
   const targetMonth = String(form.get("target_month") || "").trim();
   const targetDate = String(form.get("target_date") || "").trim();
   if (!teacher || !course) {
+    activateProjectFormSection(event.currentTarget.closest(".modal-layer"), "basic");
     showToast("請填寫老師名稱與課程名稱");
     return;
   }
   if (!/^\d{4}-\d{2}$/.test(targetMonth) || !/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) {
+    activateProjectFormSection(event.currentTarget.closest(".modal-layer"), "schedule");
     showToast("請確認日期格式");
     return;
   }
@@ -1690,6 +1781,7 @@ function saveProjectFromForm(event) {
   const cloudLink = validExternalUrl(rawCloudLink);
   const courseLink = validExternalUrl(rawCourseLink);
   if ((rawCloudLink && !cloudLink) || (rawCourseLink && !courseLink)) {
+    activateProjectFormSection(event.currentTarget.closest(".modal-layer"), "links");
     showToast("雲端資料夾與課程頁必須是 http 或 https 網址");
     return;
   }
