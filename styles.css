@@ -1,25 +1,25 @@
 :root {
-  --bg: #f3f5f8;
-  --surface: #ffffff;
-  --surface-alt: #f8fafc;
-  --border: #e1e5eb;
-  --text: #20242d;
-  --muted: #697180;
-  --primary: #315bd6;
-  --primary-hover: #2448b5;
-  --primary-soft: #edf2ff;
-  --green: #287a57;
-  --green-soft: #e8f3ed;
-  --amber: #b47a24;
-  --amber-soft: #fff4df;
-  --red: #c45462;
-  --red-soft: #fdecef;
-  --gray-soft: #f0f2f5;
-  --sidebar-bg: #191b20;
-  --sidebar-surface: #2a2d34;
-  --sidebar-text: #d2d5dc;
-  --sidebar-muted: #9298a4;
-  --shadow: 0 1px 2px rgba(20, 27, 40, 0.04), 0 4px 14px rgba(20, 27, 40, 0.025);
+  --bg: #f6f3f2;
+  --surface: #fffdfc;
+  --surface-alt: #faf7f6;
+  --border: #e5dddb;
+  --text: #2d292a;
+  --muted: #756e70;
+  --primary: #8f4f61;
+  --primary-hover: #743f4f;
+  --primary-soft: #f6e9ed;
+  --green: #5f7f6d;
+  --green-soft: #eaf1ec;
+  --amber: #a77d43;
+  --amber-soft: #f7f0e4;
+  --red: #b75662;
+  --red-soft: #f8e8eb;
+  --gray-soft: #f0eceb;
+  --sidebar-bg: #292326;
+  --sidebar-surface: #40343a;
+  --sidebar-text: #e7dee1;
+  --sidebar-muted: #b2a6aa;
+  --shadow: 0 1px 2px rgba(62, 42, 48, 0.05), 0 5px 16px rgba(62, 42, 48, 0.035);
 }
 
 * {
@@ -62,7 +62,7 @@ button {
   gap: 14px;
   padding: 0;
   background: var(--sidebar-bg);
-  border-right: 1px solid #292a2f;
+  border-right: 1px solid #3a3034;
 }
 
 .brand {
@@ -134,7 +134,7 @@ button {
 }
 
 .nav-button:hover {
-  background: #292a2f;
+  background: #382f33;
   color: #ffffff;
 }
 
@@ -146,13 +146,13 @@ button {
 }
 
 .sidebar-foot .ghost-button {
-  border-color: #3a3b42;
+  border-color: #51434a;
   background: transparent;
   color: var(--sidebar-text);
 }
 
 .sidebar-foot .ghost-button:hover {
-  border-color: #51535c;
+  border-color: #69575f;
   background: var(--sidebar-surface);
   color: #ffffff;
 }
@@ -217,7 +217,7 @@ button {
 .ghost-button:hover,
 .small-button:hover,
 .icon-button:hover {
-  border-color: #cfd4dd;
+  border-color: #d5cbca;
   background: var(--surface-alt);
 }
 
@@ -577,7 +577,7 @@ button {
 }
 
 .completed-project-toggle.active {
-  border-color: #cad3e8;
+  border-color: #dcc8ce;
   background: var(--primary-soft);
   color: var(--primary);
 }
@@ -1148,7 +1148,7 @@ button:disabled {
   color: var(--muted);
   border-right: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
-  background: #fbfcfd;
+  background: #fcf9f8;
   font-size: 12px;
   font-weight: 700;
 }
@@ -1180,8 +1180,8 @@ button.day-cell:hover {
 }
 
 .day-cell.outside-month {
-  background: #fafbfc;
-  color: #a6acb7;
+  background: #faf7f6;
+  color: #aaa0a2;
 }
 
 .day-number {
@@ -1210,7 +1210,7 @@ button.day-cell:hover {
   margin-top: 2px;
   border-radius: 3px;
   background: var(--primary-soft);
-  color: #274aa9;
+  color: #7a4051;
   padding: 3px 5px;
   font-size: 10px;
   line-height: 1.25;
@@ -1291,7 +1291,7 @@ button.day-cell:hover {
   display: grid;
   place-items: center;
   padding: 18px;
-  background: rgba(31, 41, 51, 0.28);
+  background: rgba(45, 35, 39, 0.3);
 }
 
 .modal-layer[hidden] {
@@ -1706,7 +1706,7 @@ button.day-cell:hover {
     grid-template-columns: repeat(4, minmax(0, 1fr));
     min-height: 54px;
     border-top: 1px solid var(--border);
-    background: rgba(255, 255, 255, 0.96);
+    background: rgba(255, 253, 252, 0.96);
     backdrop-filter: blur(12px);
   }
 
