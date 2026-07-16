@@ -1,9 +1,13 @@
 {
   "name": "老師專案管理",
   "short_name": "老師專案",
+  "id": "/",
+  "description": "老師課程專案、工作月曆與提醒管理",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
+  "orientation": "any",
+  "categories": ["productivity", "business"],
   "background_color": "#f7f9fb",
   "theme_color": "#111214",
   "lang": "zh-Hant"
