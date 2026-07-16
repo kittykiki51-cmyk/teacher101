@@ -877,35 +877,6 @@ function calendarEvent(task, extraClass = "") {
   return `<button type="button" draggable="true" class="calendar-event ${extraClass} ${task.status === STATUS_COMPLETED ? "completed" : ""}" style="${calendarColorStyle(task)}" data-calendar-task="${escapeHTML(task.id)}" title="拖曳以調整日期或時間"><b>${escapeHTML(task.time || "全天")}</b><span>${escapeHTML(task.title || "未命名工作")}</span></button>`;
 }
 
-function calendarVisibleTasks(anchor) {
-  const start = new Date(anchor);
-  const end = new Date(anchor);
-  if (state.calendarView === "month") {
-    start.setDate(1);
-    end.setMonth(end.getMonth() + 1, 0);
-  } else if (state.calendarView === "week") {
-    const first = weekStart(anchor);
-    start.setTime(first.getTime());
-    end.setTime(first.getTime());
-    end.setDate(end.getDate() + 6);
-  }
-  const from = dateISO(start);
-  const to = dateISO(end);
-  return state.workspace.tasks.filter((task) => task.date >= from && task.date <= to && calendarTaskMatches(task));
-}
-
-function renderCalendarLegend(anchor) {
-  const tasks = calendarVisibleTasks(anchor);
-  const entries = new Map();
-  tasks.forEach((task) => {
-    const project = projectById(task.project_id);
-    const key = project?.id || "personal";
-    if (!entries.has(key)) entries.set(key, { task, label: project?.course || "我的工作" });
-  });
-  if (!entries.size) return "";
-  return `<div class="calendar-legend" aria-label="行事曆分類">${[...entries.values()].map(({ task, label }) => `<span style="${calendarColorStyle(task)}"><i></i>${escapeHTML(label)}</span>`).join("")}</div>`;
-}
-
 function renderCalendarPanelTask(task) {
   const project = projectById(task.project_id);
   const completed = task.status === STATUS_COMPLETED;
@@ -949,7 +920,6 @@ function renderCalendar() {
       <select class="select" id="calendarStatusFilter" aria-label="工作狀態篩選">${["全部", "未完成", "已完成"].map((value) => `<option ${state.calendarStatusFilter === value ? "selected" : ""}>${value}</option>`).join("")}</select>
       <button class="primary-button" data-calendar-add="${escapeHTML(selectedDate)}">新增工作</button>
     </div>
-    ${renderCalendarLegend(anchor)}
     <div class="grid calendar-layout ${state.calendarView}-view-layout">
       <div class="calendar-view-main">${state.calendarView === "month" ? renderMonthCalendar(anchor) : state.calendarView === "week" ? renderWeekCalendar(anchor) : renderDayCalendar(anchor)}</div>
       <button type="button" class="calendar-sheet-backdrop ${state.calendarMobilePanelOpen ? "open" : ""}" data-calendar-panel-close aria-label="關閉所選日期工作"></button>

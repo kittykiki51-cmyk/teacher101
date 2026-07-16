@@ -1145,25 +1145,6 @@ button:disabled {
   width: 100%;
 }
 
-.calendar-legend {
-  display: flex;
-  gap: 8px 14px;
-  overflow-x: auto;
-  margin: -2px 0 12px;
-  padding: 2px 0 4px;
-  scrollbar-width: thin;
-}
-
-.calendar-legend span {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--muted);
-  font-size: 11px;
-}
-
-.calendar-legend i,
 .calendar-task-color {
   width: 8px;
   height: 8px;
@@ -2028,15 +2009,6 @@ button.day-cell:hover {
 
   .calendar-filters .primary-button {
     grid-column: 1 / -1;
-  }
-
-  .calendar-legend {
-    gap: 6px 11px;
-    margin-bottom: 7px;
-  }
-
-  .calendar-legend span {
-    font-size: 9px;
   }
 
   .calendar-layout {
