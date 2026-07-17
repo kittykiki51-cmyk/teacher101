@@ -34,6 +34,7 @@ body {
   color: var(--text);
   font-family: "PingFang TC", "Microsoft JhengHei UI", "Microsoft JhengHei", "Noto Sans CJK TC", sans-serif;
   font-size: 16px;
+  line-height: 1.45;
   letter-spacing: 0;
 }
 
@@ -1526,7 +1527,7 @@ button.day-cell:hover {
   background: var(--event-soft);
   color: var(--event-color);
   padding: 4px 5px;
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.25;
   text-align: left;
   cursor: grab;
@@ -1588,7 +1589,7 @@ button.day-cell:hover {
 }
 
 .week-date-heading span {
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .week-date-heading strong {
@@ -1622,7 +1623,7 @@ button.day-cell:hover {
 .week-all-day > strong {
   padding: 9px 6px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   text-align: right;
 }
 
@@ -1646,7 +1647,7 @@ button.day-cell:hover {
   border-bottom: 1px solid var(--border);
   padding: 6px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   text-align: right;
 }
 
@@ -2020,7 +2021,7 @@ button.day-cell:hover {
 
   .eyebrow,
   .save-indicator {
-    font-size: 9px;
+    font-size: 10px;
   }
 
   .topbar-title-block {
@@ -2203,7 +2204,7 @@ button.day-cell:hover {
 
   .home-task-row p {
     margin: 2px 0 0;
-    font-size: 10px;
+    font-size: 11px;
   }
 
   .home-task-actions {
@@ -2229,7 +2230,7 @@ button.day-cell:hover {
   }
 
   .home-project-card p {
-    font-size: 10px;
+    font-size: 11px;
   }
 
   .home-project-actions {
@@ -2449,7 +2450,7 @@ button.day-cell:hover {
   }
 
   .calendar-card .card-header .muted {
-    font-size: 10px;
+    font-size: 11px;
   }
 
   .calendar-card .card-header .toolbar {
@@ -2537,7 +2538,7 @@ button.day-cell:hover {
   }
 
   .mobile-date-button span {
-    font-size: 9px;
+    font-size: 10px;
   }
 
   .mobile-date-button strong {
@@ -2553,7 +2554,7 @@ button.day-cell:hover {
     border-radius: 7px;
     background: var(--primary-soft);
     color: var(--primary);
-    font-size: 8px;
+    font-size: 10px;
     font-style: normal;
     line-height: 14px;
   }
@@ -2648,7 +2649,7 @@ button.day-cell:hover {
   .week-date-heading span,
   .week-all-day > strong,
   .week-hour-row > time {
-    font-size: 9px;
+    font-size: 10px;
   }
 
   .week-date-heading strong {
@@ -2670,7 +2671,7 @@ button.day-cell:hover {
   .week-event,
   .agenda-event {
     padding: 4px;
-    font-size: 9px;
+    font-size: 10px;
   }
 
   .all-day-row,
@@ -2682,7 +2683,7 @@ button.day-cell:hover {
   .all-day-row > strong,
   .hour-row > time {
     padding: 8px 5px;
-    font-size: 9px;
+    font-size: 10px;
   }
 
   .archive-row {
@@ -2723,7 +2724,7 @@ button.day-cell:hover {
   }
 
   .calendar-day-kicker {
-    font-size: 9px;
+    font-size: 10px;
   }
 
   .calendar-sheet-backdrop {
@@ -2796,7 +2797,7 @@ button.day-cell:hover {
   .calendar-panel-meta,
   .calendar-panel-note,
   .calendar-panel-empty p {
-    font-size: 9px;
+    font-size: 11px;
   }
 
   .calendar-panel-actions {
@@ -2806,7 +2807,7 @@ button.day-cell:hover {
   .calendar-panel-actions .small-button,
   .calendar-delete-button {
     min-height: 25px;
-    font-size: 10px;
+    font-size: 11px;
   }
 
   .item-card {
@@ -2820,7 +2821,7 @@ button.day-cell:hover {
 
   .item-meta {
     gap: 4px;
-    font-size: 10px;
+    font-size: 11px;
   }
 
   .search-input,

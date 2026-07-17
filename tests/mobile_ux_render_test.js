@@ -86,11 +86,13 @@ assert(styles.includes("position: sticky") && styles.includes("top: 84px"), "Mob
 assert(styles.includes(".formal-panel .list") && styles.includes("grid-template-columns: repeat(2"), "Desktop dashboard should scan formal projects in two columns");
 assert(styles.includes("grid-template-columns: repeat(2, minmax(0, 1fr))"), "Today's work and phone panels should use equal desktop columns");
 assert(styles.includes("margin-right: -10px") && styles.includes("border-radius: 0"), "Mobile dashboard sections should use a compact native-style layout");
+assert(!styles.includes("font-size: 9px"), "Mobile supporting text should remain readable at 10px or larger");
+assert(styles.includes('.modal-card .search-input') && styles.includes("font-size: 16px"), "Modal inputs should remain 16px to avoid iOS focus zoom");
 
 const index = read("../index.html");
 assert(index.includes("mobile-button-label"), "Mobile top bar should use a compact add label");
 
 const worker = read("../service-worker.js");
-assert(worker.includes('teacher-operations-v7'), "PWA cache should be refreshed for equal dashboard columns");
+assert(worker.includes('teacher-operations-v8'), "PWA cache should be refreshed for the typography update");
 
 console.log("mobile UX render tests: passed");
