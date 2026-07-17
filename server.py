@@ -316,10 +316,17 @@ def home() -> Any:
 
 @app.get("/<path:filename>")
 def public_asset(filename: str) -> Any:
-    allowed = {"styles.css", "app.js", "manifest.json", "service-worker.js", "login.css", "login.js"}
+    allowed = {
+        "styles.css", "app.js", "manifest.json", "service-worker.js", "login.css", "login.js",
+        "app-icon.svg", "app-icon-192.png", "app-icon-512.png",
+        "icon-house.svg", "icon-folders.svg", "icon-calendar-days.svg", "icon-settings.svg",
+    }
     if filename not in allowed:
         abort(404)
-    if filename not in {"login.css", "login.js"} and not authenticated():
+    public_without_auth = {
+        "login.css", "login.js", "app-icon.svg", "app-icon-192.png", "app-icon-512.png",
+    }
+    if filename not in public_without_auth and not authenticated():
         return redirect(url_for("login_page"))
     return send_from_directory(BASE_DIR, filename)
 

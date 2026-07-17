@@ -8,7 +8,12 @@
   "display": "standalone",
   "orientation": "any",
   "categories": ["productivity", "business"],
-  "background_color": "#f7f9fb",
+  "background_color": "#f4f6f8",
   "theme_color": "#111214",
-  "lang": "zh-Hant"
+  "lang": "zh-Hant",
+  "icons": [
+    { "src": "/app-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" },
+    { "src": "/app-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/app-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
 }

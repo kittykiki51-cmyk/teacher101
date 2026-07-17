@@ -72,6 +72,7 @@ assert(source.includes('type="date" name="target_date"'), "Project date should u
 assert(source.includes('name="teacher" required') && source.includes('autocomplete="off"'), "Teacher name should not request contact autofill");
 assert(source.includes("project-form-tabs"), "Project forms should provide mobile sections");
 assert(source.includes('data-project-form-section="basic"') && source.includes('data-project-form-section="schedule"') && source.includes('data-project-form-section="links"'), "All project form sections should be available");
+assert(source.includes("nav-icon-${item.icon}"), "Desktop and mobile navigation should render consistent line icons");
 
 const calendar = harness.renderCalendar();
 assert(calendar.includes("mobile-calendar-agenda"), "Calendar should provide an agenda-first mobile view");
@@ -88,11 +89,19 @@ assert(styles.includes("grid-template-columns: repeat(2, minmax(0, 1fr))"), "Tod
 assert(styles.includes("margin-right: -10px") && styles.includes("border-radius: 0"), "Mobile dashboard sections should use a compact native-style layout");
 assert(!styles.includes("font-size: 9px"), "Mobile supporting text should remain readable at 10px or larger");
 assert(styles.includes('.modal-card .search-input') && styles.includes("font-size: 16px"), "Modal inputs should remain 16px to avoid iOS focus zoom");
+assert(styles.includes(".nav-icon-house") && styles.includes(".nav-icon-calendar-days"), "Navigation icon masks should be available");
+assert(styles.includes(".pill.gray") && styles.includes("border-radius: 5px"), "Status badges should use the standardized compact treatment");
+assert(styles.includes("button:active:not(:disabled)"), "Buttons should provide restrained press feedback");
 
 const index = read("../index.html");
 assert(index.includes("mobile-button-label"), "Mobile top bar should use a compact add label");
+assert(index.includes('href="app-icon.svg"') && index.includes('href="app-icon-192.png"'), "The app should publish browser and home-screen icons");
+
+const manifest = read("../manifest.json");
+assert(manifest.includes("app-icon-192.png") && manifest.includes("app-icon-512.png") && manifest.includes("maskable"), "The PWA manifest should publish installable app icons");
 
 const worker = read("../service-worker.js");
-assert(worker.includes('teacher-operations-v8'), "PWA cache should be refreshed for the typography update");
+assert(worker.includes('teacher-operations-v9'), "PWA cache should be refreshed for the visual polish update");
+assert(worker.includes("icon-house.svg") && worker.includes("app-icon-512.png"), "The PWA shell should cache identity and navigation assets");
 
 console.log("mobile UX render tests: passed");

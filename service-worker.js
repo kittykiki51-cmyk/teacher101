@@ -1,5 +1,9 @@
-const CACHE_NAME = "teacher-operations-v8";
-const APP_SHELL = ["/", "/styles.css", "/app.js", "/manifest.json"];
+const CACHE_NAME = "teacher-operations-v9";
+const APP_SHELL = [
+  "/", "/styles.css", "/app.js", "/manifest.json", "/app-icon.svg",
+  "/app-icon-192.png", "/app-icon-512.png", "/icon-house.svg", "/icon-folders.svg",
+  "/icon-calendar-days.svg", "/icon-settings.svg",
+];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)).catch(() => undefined));

@@ -10,10 +10,10 @@ const ROLE_UNSET = "未設定";
 const STAGE_NAMES = ["講師資料", "課綱與合約", "課程錄製", "影片後製", "課程上架"];
 
 const NAV_ITEMS = [
-  { id: "dashboard", label: "營運首頁", mobileLabel: "首頁", icon: "", title: "營運首頁" },
-  { id: "projects", label: "課程專案", mobileLabel: "專案", icon: "", title: "課程專案" },
-  { id: "calendar", label: "工作月曆", mobileLabel: "月曆", icon: "", title: "工作月曆" },
-  { id: "settings", label: "更多設定", mobileLabel: "設定", icon: "", title: "更多設定" },
+  { id: "dashboard", label: "營運首頁", mobileLabel: "首頁", icon: "house", title: "營運首頁" },
+  { id: "projects", label: "課程專案", mobileLabel: "專案", icon: "folders", title: "課程專案" },
+  { id: "calendar", label: "工作月曆", mobileLabel: "月曆", icon: "calendar-days", title: "工作月曆" },
+  { id: "settings", label: "更多設定", mobileLabel: "設定", icon: "settings", title: "更多設定" },
 ];
 
 const emptyWorkspace = () => ({
@@ -358,13 +358,13 @@ function renderNav() {
   const activePage = state.page === "projectDetail" ? "projects" : state.page;
   const html = NAV_ITEMS.map((item) => `
     <button class="nav-button ${activePage === item.id ? "active" : ""}" data-page="${item.id}">
-      <span>${item.icon}</span><span>${item.label}</span>
+      <span class="nav-icon nav-icon-${item.icon}" aria-hidden="true"></span><span>${item.label}</span>
     </button>
   `).join("");
   $("#desktopNav").innerHTML = html;
   $("#mobileNav").innerHTML = NAV_ITEMS.map((item) => `
     <button class="${activePage === item.id ? "active" : ""}" data-page="${item.id}">
-      <span>${item.mobileLabel}</span>
+      <span class="nav-icon nav-icon-${item.icon}" aria-hidden="true"></span><span>${item.mobileLabel}</span>
     </button>
   `).join("");
   document.querySelectorAll("[data-page]").forEach((button) => {

@@ -47,6 +47,19 @@ textarea {
 
 button {
   cursor: pointer;
+  transition: background-color 0.14s ease, border-color 0.14s ease, color 0.14s ease, transform 0.1s ease;
+}
+
+button:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid var(--primary-soft);
+  outline-offset: 2px;
 }
 
 .app-shell {
@@ -124,13 +137,28 @@ button {
   min-height: 44px;
   display: flex;
   align-items: center;
-  gap: 0;
+  gap: 10px;
   padding: 0 14px;
   border-radius: 6px;
   text-align: left;
   color: var(--sidebar-text);
   font-size: 14px;
 }
+
+.nav-icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  display: inline-block;
+  background: currentColor;
+  -webkit-mask: var(--nav-icon) center / contain no-repeat;
+  mask: var(--nav-icon) center / contain no-repeat;
+}
+
+.nav-icon-house { --nav-icon: url("icon-house.svg"); }
+.nav-icon-folders { --nav-icon: url("icon-folders.svg"); }
+.nav-icon-calendar-days { --nav-icon: url("icon-calendar-days.svg"); }
+.nav-icon-settings { --nav-icon: url("icon-settings.svg"); }
 
 .nav-button.active {
   background: var(--sidebar-surface);
@@ -481,7 +509,8 @@ button {
   display: flex;
   justify-content: flex-end;
   gap: 6px;
-  margin-top: 4px;
+  margin-top: auto;
+  padding-top: 4px;
 }
 
 .home-task-row {
@@ -628,28 +657,38 @@ button {
 .pill {
   display: inline-flex;
   align-items: center;
-  min-height: 24px;
-  border-radius: 999px;
-  padding: 0 9px;
+  min-height: 22px;
+  border: 1px solid #d8defc;
+  border-radius: 5px;
+  padding: 0 8px;
   background: var(--primary-soft);
   color: var(--primary);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
 }
 
 .pill.green {
+  border-color: #cfe0d4;
   background: var(--green-soft);
   color: var(--green);
 }
 
 .pill.amber {
+  border-color: #ead9bb;
   background: var(--amber-soft);
   color: var(--amber);
 }
 
 .pill.red {
+  border-color: #ebcbd0;
   background: var(--red-soft);
   color: var(--red);
+}
+
+.pill.gray {
+  border-color: var(--border);
+  background: var(--gray-soft);
+  color: var(--muted);
 }
 
 .toolbar {
@@ -731,6 +770,8 @@ button {
 
 .desktop-project-card {
   min-width: 0;
+  display: flex;
+  flex-direction: column;
   padding: 15px 16px;
   box-shadow: none;
   transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
@@ -771,6 +812,7 @@ button {
 }
 
 .project-meta {
+  color: var(--muted);
   font-size: 14px;
 }
 
@@ -804,7 +846,8 @@ button {
 .project-card-actions {
   display: flex;
   gap: 6px;
-  margin-top: 10px;
+  margin-top: auto;
+  padding-top: 10px;
 }
 
 .small-project-button {
@@ -2872,11 +2915,19 @@ button.day-cell:hover {
   .bottom-nav button {
     position: relative;
     display: grid;
-    place-items: center;
+    grid-template-rows: 20px auto;
+    align-content: center;
+    justify-items: center;
+    gap: 2px;
     min-width: 0;
     padding: 8px 2px 6px;
     color: var(--muted);
     font-size: 11px;
+  }
+
+  .bottom-nav .nav-icon {
+    width: 19px;
+    height: 19px;
   }
 
   .bottom-nav button::before {
@@ -3115,6 +3166,16 @@ button.day-cell:hover {
   .two-col,
   .three-col {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
   }
 }
 
