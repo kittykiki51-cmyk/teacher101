@@ -1024,10 +1024,10 @@ function renderWeekCalendar(anchor) {
   const dates = Array.from({ length: 7 }, (_, index) => { const date = new Date(start); date.setDate(start.getDate() + index); return date; });
   const tasks = dates.flatMap((date) => tasksOnDate(dateISO(date)));
   const hours = calendarHours(tasks, dates.some((date) => dateISO(date) === todayISO()));
-  return `<div class="week-calendar">
+  return `<div class="week-calendar" data-calendar-scroll>
     <div class="week-time-header"><span class="time-gutter"></span>${dates.map((date) => { const iso = dateISO(date); return `<button type="button" class="week-date-heading ${iso === todayISO() ? "today" : ""} ${iso === state.selectedCalendarDate ? "selected" : ""}" data-calendar-date="${iso}"><span>週${["日", "一", "二", "三", "四", "五", "六"][date.getDay()]}</span><strong>${date.getDate()}</strong></button>`; }).join("")}</div>
     <div class="week-all-day"><strong>全天</strong>${dates.map((date) => { const iso = dateISO(date); const allDay = tasksOnDate(iso).filter((task) => !task.time); return `<div data-calendar-drop="${iso}" data-drop-all-day>${allDay.map((task) => calendarEvent(task, "week-event")).join("")}</div>`; }).join("")}</div>
-    <div class="time-grid-scroll" data-calendar-scroll><div class="week-hours">${hours.map((hour) => { const prefix = String(hour).padStart(2, "0"); return `<div class="week-hour-row"><time>${prefix}:00</time>${dates.map((date) => { const iso = dateISO(date); const hourTasks = tasksOnDate(iso).filter((task) => String(task.time || "").startsWith(prefix)); return `<div class="week-time-cell ${iso === state.selectedCalendarDate ? "selected" : ""}" data-calendar-drop="${iso}" data-drop-time="${prefix}:00" title="雙擊新增工作">${currentTimeMarker(iso, hour)}${hourTasks.map((task) => calendarEvent(task, "week-event")).join("")}</div>`; }).join("")}</div>`; }).join("")}</div></div>
+    <div class="time-grid-scroll"><div class="week-hours">${hours.map((hour) => { const prefix = String(hour).padStart(2, "0"); return `<div class="week-hour-row"><time>${prefix}:00</time>${dates.map((date) => { const iso = dateISO(date); const hourTasks = tasksOnDate(iso).filter((task) => String(task.time || "").startsWith(prefix)); return `<div class="week-time-cell ${iso === state.selectedCalendarDate ? "selected" : ""}" data-calendar-drop="${iso}" data-drop-time="${prefix}:00" title="雙擊新增工作">${currentTimeMarker(iso, hour)}${hourTasks.map((task) => calendarEvent(task, "week-event")).join("")}</div>`; }).join("")}</div>`; }).join("")}</div></div>
   </div>`;
 }
 

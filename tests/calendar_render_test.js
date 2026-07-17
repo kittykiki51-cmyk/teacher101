@@ -36,6 +36,7 @@ assert(month.includes("Escaped &lt;task&gt;"), "Calendar task titles must be HTM
 const week = harness.renderWeekCalendar(anchor);
 assert(week.includes("week-hour-row"), "Week view should render a time grid");
 assert(week.includes("data-drop-time"), "Week time cells should accept scheduled tasks");
+assert(week.includes('class="week-calendar" data-calendar-scroll'), "Week header and hour rows should share one scroll container");
 
 const day = harness.renderDayCalendar(anchor);
 assert(day.includes("time-grid-scroll"), "Day view should render a scrollable time grid");
