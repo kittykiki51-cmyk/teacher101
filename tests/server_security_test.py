@@ -44,6 +44,10 @@ broken = workspace_payload()
 broken["projects"] = [None]
 assert client.put("/api/workspace", json={"workspace": broken, "revision": revision}, headers=headers).status_code == 400
 
+broken_nested = workspace_payload()
+broken_nested["projects"] = [{"id": "project", "stages": [[]]}]
+assert client.put("/api/workspace", json={"workspace": broken_nested, "revision": revision}, headers=headers).status_code == 400
+
 assert client.put("/api/workspace", json={"workspace": workspace_payload(), "revision": revision}).status_code == 403
 assert client.put("/api/workspace", json={"workspace": workspace_payload(), "revision": revision}, headers=headers).status_code == 200
 assert client.put("/api/workspace", json={"workspace": workspace_payload(), "revision": revision}, headers=headers).status_code == 409

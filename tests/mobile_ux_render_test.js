@@ -138,6 +138,7 @@ assert(calendar.includes("mobile-date-strip"), "Mobile calendar should provide a
 assert(calendar.includes("data-mobile-month-toggle"), "Full month view should remain available on mobile");
 
 const styles = read("../styles.css");
+assert((styles.match(/\{/g) || []).length === (styles.match(/\}/g) || []).length, "CSS braces should remain balanced");
 const dashboardPanelStart = styles.indexOf("\n.home-panel {", styles.indexOf(".home-body"));
 const dashboardPanelStyles = styles.slice(dashboardPanelStart, styles.indexOf("\n.today-work-panel {", dashboardPanelStart));
 assert(dashboardPanelStyles.includes("background: var(--surface)") && dashboardPanelStyles.includes("border: 1px solid var(--border)"), "Dashboard panels should retain their white framed surfaces");
@@ -168,7 +169,8 @@ const manifest = read("../manifest.json");
 assert(manifest.includes("app-icon-192.png") && manifest.includes("app-icon-512.png") && manifest.includes("maskable"), "The PWA manifest should publish installable app icons");
 
 const worker = read("../service-worker.js");
-assert(worker.includes('teacher-operations-v15'), "PWA cache should be refreshed for the project status tab layout fix");
+new Function(worker);
+assert(worker.includes('teacher-operations-v16'), "PWA cache should be refreshed for the final data-integrity fixes");
 assert(worker.includes("icon-house.svg") && worker.includes("app-icon-512.png"), "The PWA shell should cache identity and navigation assets");
 assert(source.includes("cloudSavePending"), "Cloud saves made during an active request should remain queued");
 assert(source.includes("scheduleSearchRender"), "Search input should debounce full-page rendering");

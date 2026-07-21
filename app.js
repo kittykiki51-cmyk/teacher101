@@ -1,5 +1,7 @@
 const STORAGE_KEY = "teacher_operations_web_workspace";
 const OFFLINE_CACHE_KEY = "teacher_operations_cloud_offline_cache";
+const OFFLINE_BASE_KEY = "teacher_operations_cloud_sync_base";
+const OFFLINE_DIRTY_KEY = "teacher_operations_cloud_pending_changes";
 const CLOUD_MODE = window.location?.protocol !== "file:";
 
 const STATUS_COMPLETED = "已完成";
@@ -8,6 +10,7 @@ const TASK_TYPE_PHONE = "電話聯繫";
 const ROLE_FORMAL = "正式";
 const ROLE_UNSET = "未設定";
 const STAGE_NAMES = ["講師資料", "課綱與合約", "課程錄製", "影片後製", "課程上架"];
+const WORKSPACE_COLLECTION_FIELDS = ["projects", "tasks", "checklists", "progress_logs", "project_messages", "history", "archives"];
 
 const NAV_ITEMS = [
   { id: "dashboard", label: "營運首頁", mobileLabel: "首頁", icon: "house", title: "營運首頁" },
@@ -59,6 +62,7 @@ let cloudCsrfToken = "";
 let cloudSaveTimer = null;
 let cloudSaveInFlight = false;
 let cloudSavePending = false;
+let cloudBaseWorkspace = null;
 let calendarSwipeUntil = 0;
 let modalViewportCleanup = null;
 let searchRenderTimer = null;
@@ -93,6 +97,7 @@ function saveWorkspace() {
     return;
   }
   localStorage.setItem(OFFLINE_CACHE_KEY, JSON.stringify(state.workspace));
+  localStorage.setItem(OFFLINE_DIRTY_KEY, "1");
   updateSyncIndicator("正在同步...", "syncing");
   cloudSavePending = true;
   window.clearTimeout(cloudSaveTimer);
@@ -101,6 +106,8 @@ function saveWorkspace() {
 
 async function clearBrowserPrivateData() {
   localStorage.removeItem(OFFLINE_CACHE_KEY);
+  localStorage.removeItem(OFFLINE_BASE_KEY);
+  localStorage.removeItem(OFFLINE_DIRTY_KEY);
   localStorage.removeItem(STORAGE_KEY);
   try {
     if ("caches" in window) {
@@ -131,16 +138,17 @@ async function loadCloudWorkspace() {
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || "雲端資料讀取失敗");
   state.workspace = normalizeWorkspace(result.workspace);
+  storeCloudBaseWorkspace(state.workspace);
   localStorage.setItem(OFFLINE_CACHE_KEY, JSON.stringify(state.workspace));
   cloudRevision = result.revision;
   cloudCsrfToken = result.csrf_token;
 }
 
 async function saveCloudWorkspace() {
-  if (!CLOUD_MODE) return;
+  if (!CLOUD_MODE) return true;
   if (cloudSaveInFlight) {
     cloudSavePending = true;
-    return;
+    return true;
   }
   window.clearTimeout(cloudSaveTimer);
   cloudSaveTimer = null;
@@ -156,28 +164,55 @@ async function saveCloudWorkspace() {
     const result = await response.json();
     if (response.status === 409) {
       const localWorkspace = normalizeWorkspace(state.workspace);
+      const baseWorkspace = cloudBaseWorkspace;
       await loadCloudWorkspace();
-      state.workspace = mergeWorkspaces(state.workspace, localWorkspace);
+      state.workspace = mergeWorkspaces(state.workspace, localWorkspace, baseWorkspace);
       localStorage.setItem(OFFLINE_CACHE_KEY, JSON.stringify(state.workspace));
       cloudSavePending = true;
       showToast("已逐筆合併另一台裝置的更新");
       render();
-      return;
+      return true;
     }
     if (!response.ok) throw new Error(result.error || "同步失敗");
     cloudRevision = result.revision;
+    storeCloudBaseWorkspace(JSON.parse(workspaceJSON));
+    if (!cloudSavePending) localStorage.removeItem(OFFLINE_DIRTY_KEY);
     localStorage.setItem(OFFLINE_CACHE_KEY, JSON.stringify(state.workspace));
     updateSyncIndicator(cloudSavePending ? "正在同步..." : "已同步雲端", cloudSavePending ? "syncing" : "saved");
+    return true;
   } catch (error) {
     localStorage.setItem(OFFLINE_CACHE_KEY, JSON.stringify(state.workspace));
     updateSyncIndicator(navigator.onLine ? "同步失敗" : "離線保存中", navigator.onLine ? "error" : "offline");
     showToast(navigator.onLine ? error.message : "目前離線，資料已保存在這台裝置");
+    return false;
   } finally {
     cloudSaveInFlight = false;
     if (cloudSavePending) {
       window.clearTimeout(cloudSaveTimer);
       cloudSaveTimer = window.setTimeout(saveCloudWorkspace, 120);
     }
+  }
+}
+
+async function reconnectCloudWorkspace() {
+  const localWorkspace = cloneWorkspace(state.workspace);
+  const baseWorkspace = cloudBaseWorkspace || readCloudBaseWorkspace();
+  const hasPendingChanges = localStorage.getItem(OFFLINE_DIRTY_KEY) === "1" || cloudSavePending;
+  if (!cloudCsrfToken) {
+    await loadCloudWorkspace();
+    if (hasPendingChanges) {
+      state.workspace = mergeWorkspaces(state.workspace, localWorkspace, baseWorkspace);
+      localStorage.setItem(OFFLINE_CACHE_KEY, JSON.stringify(state.workspace));
+      cloudSavePending = true;
+    }
+    render();
+  }
+  if (hasPendingChanges) {
+    cloudSavePending = true;
+    const accepted = await saveCloudWorkspace();
+    if (!accepted) throw new Error("恢復同步失敗，離線修改仍保留在這台裝置");
+  } else {
+    updateSyncIndicator("已同步雲端", "saved");
   }
 }
 
@@ -203,28 +238,111 @@ function normalizeWorkspace(value) {
   };
 }
 
-function mergeWorkspaces(remoteValue, localValue) {
+function cloneWorkspace(value) {
+  return normalizeWorkspace(JSON.parse(JSON.stringify(value)));
+}
+
+function readCloudBaseWorkspace() {
+  try {
+    const saved = localStorage.getItem(OFFLINE_BASE_KEY);
+    return saved ? normalizeWorkspace(JSON.parse(saved)) : null;
+  } catch {
+    return null;
+  }
+}
+
+function storeCloudBaseWorkspace(value) {
+  cloudBaseWorkspace = cloneWorkspace(value);
+  localStorage.setItem(OFFLINE_BASE_KEY, JSON.stringify(cloudBaseWorkspace));
+}
+
+function workspaceImportIsValid(value) {
+  const isRecord = (item) => Boolean(item) && typeof item === "object" && !Array.isArray(item);
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  if (!Array.isArray(value.projects) || !Array.isArray(value.tasks)) return false;
+  if (value.settings !== undefined && (!value.settings || typeof value.settings !== "object" || Array.isArray(value.settings))) return false;
+  if (value.deleted_ids !== undefined && (!value.deleted_ids || typeof value.deleted_ids !== "object" || Array.isArray(value.deleted_ids))) return false;
+  for (const field of [...WORKSPACE_COLLECTION_FIELDS, "checklist_templates"]) {
+    if (value[field] !== undefined && (!Array.isArray(value[field]) || value[field].some((item) => !isRecord(item)))) return false;
+  }
+  if ((value.projects || []).some((project) => project.stages !== undefined && (!Array.isArray(project.stages) || project.stages.some((item) => !isRecord(item))))) return false;
+  if ((value.checklists || []).some((group) => group.items !== undefined && (!Array.isArray(group.items) || group.items.some((item) => !isRecord(item))))) return false;
+  if ((value.checklist_templates || []).some((template) => !Array.isArray(template.sections) || template.sections.some((section) => !isRecord(section) || !Array.isArray(section.items) || section.items.some((item) => !isRecord(item))))) return false;
+  if ((value.archives || []).some((archive) => WORKSPACE_COLLECTION_FIELDS.slice(0, -1).some((field) => archive[field] !== undefined && (!Array.isArray(archive[field]) || archive[field].some((item) => !isRecord(item)))))) return false;
+  return true;
+}
+
+function mergeWorkspaces(remoteValue, localValue, baseValue = null) {
   const remote = normalizeWorkspace(remoteValue);
   const local = normalizeWorkspace(localValue);
+  const base = baseValue ? normalizeWorkspace(baseValue) : emptyWorkspace();
   const deleted = { ...remote.deleted_ids, ...local.deleted_ids };
-  const mergeById = (remoteItems, localItems) => {
-    const keyOf = (item) => item.id || `${item.project_id || ""}|${item.time || item.date || ""}|${item.text || item.msg || item.title || ""}`;
-    const items = new Map(remoteItems.map((item) => [keyOf(item), item]));
-    localItems.forEach((item) => { const key = keyOf(item); items.set(key, { ...(items.get(key) || {}), ...item }); });
-    return [...items.values()].filter((item) => !deleted[item.id]);
+  const sameValue = (left, right) => JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
+  const keyOf = (item) => item?.id || `${item?.project_id || ""}|${item?.time || item?.date || ""}|${item?.text || item?.msg || item?.title || ""}`;
+  const updatedAt = (item) => String(item?.updated_at || item?.last_update || item?.completed_at || item?.created_at || item?.time || item?.date || "");
+  const chooseConcurrent = (remoteItem, localItem) => updatedAt(remoteItem) > updatedAt(localItem) ? remoteItem : localItem;
+  const mergeRecord = (remoteItem, localItem, baseItem) => {
+    const conflictWinner = chooseConcurrent(remoteItem, localItem);
+    const result = {};
+    new Set([...Object.keys(remoteItem), ...Object.keys(localItem)]).forEach((field) => {
+      const remoteChanged = !sameValue(remoteItem[field], baseItem[field]);
+      const localChanged = !sameValue(localItem[field], baseItem[field]);
+      result[field] = localChanged && !remoteChanged ? localItem[field]
+        : remoteChanged && !localChanged ? remoteItem[field]
+          : sameValue(remoteItem[field], localItem[field]) ? remoteItem[field]
+            : conflictWinner[field];
+    });
+    return result;
   };
-  return normalizeWorkspace({
+  const mergeById = (remoteItems = [], localItems = [], baseItems = []) => {
+    const remoteMap = new Map(remoteItems.map((item) => [keyOf(item), item]));
+    const localMap = new Map(localItems.map((item) => [keyOf(item), item]));
+    const baseMap = new Map(baseItems.map((item) => [keyOf(item), item]));
+    const keys = new Set([...remoteMap.keys(), ...localMap.keys()]);
+    return [...keys].map((key) => {
+      const remoteItem = remoteMap.get(key);
+      const localItem = localMap.get(key);
+      const baseItem = baseMap.get(key);
+      if (deleted[remoteItem?.id || localItem?.id]) return null;
+      if (!remoteItem) return baseItem && sameValue(localItem, baseItem) ? null : localItem;
+      if (!localItem) return baseItem && sameValue(remoteItem, baseItem) ? null : remoteItem;
+      if (!baseItem) return chooseConcurrent(remoteItem, localItem);
+      const remoteChanged = !sameValue(remoteItem, baseItem);
+      const localChanged = !sameValue(localItem, baseItem);
+      if (remoteChanged && !localChanged) return remoteItem;
+      if (localChanged && !remoteChanged) return localItem;
+      if (!remoteChanged && !localChanged) return remoteItem;
+      if (sameValue(remoteItem, localItem)) return remoteItem;
+      return mergeRecord(remoteItem, localItem, baseItem);
+    }).filter(Boolean);
+  };
+  const mergeObject = (remoteObject = {}, localObject = {}, baseObject = {}) => {
+    const result = {};
+    new Set([...Object.keys(remoteObject), ...Object.keys(localObject)]).forEach((key) => {
+      const remoteChanged = !sameValue(remoteObject[key], baseObject[key]);
+      const localChanged = !sameValue(localObject[key], baseObject[key]);
+      result[key] = localChanged && !remoteChanged ? localObject[key]
+        : remoteChanged && !localChanged ? remoteObject[key]
+          : localChanged ? localObject[key] : remoteObject[key];
+    });
+    return result;
+  };
+  const merged = normalizeWorkspace({
     ...remote,
-    settings: { ...remote.settings, ...local.settings },
-    projects: mergeById(remote.projects, local.projects),
-    tasks: mergeById(remote.tasks, local.tasks),
-    checklists: mergeById(remote.checklists, local.checklists),
-    progress_logs: mergeById(remote.progress_logs, local.progress_logs),
-    project_messages: mergeById(remote.project_messages, local.project_messages),
-    history: mergeById(remote.history, local.history),
-    archives: mergeById(remote.archives, local.archives),
+    settings: mergeObject(remote.settings, local.settings, base.settings),
+    projects: mergeById(remote.projects, local.projects, base.projects),
+    tasks: mergeById(remote.tasks, local.tasks, base.tasks),
+    checklists: mergeById(remote.checklists, local.checklists, base.checklists),
+    progress_logs: mergeById(remote.progress_logs, local.progress_logs, base.progress_logs),
+    project_messages: mergeById(remote.project_messages, local.project_messages, base.project_messages),
+    history: mergeById(remote.history, local.history, base.history),
+    archives: mergeById(remote.archives, local.archives, base.archives),
     deleted_ids: deleted,
   });
+  if (remote.checklist_templates || local.checklist_templates || base.checklist_templates) {
+    merged.checklist_templates = mergeById(remote.checklist_templates, local.checklist_templates, base.checklist_templates);
+  }
+  return merged;
 }
 
 function markDeleted(id) {
@@ -1699,10 +1817,10 @@ function archiveYear() {
   }
   const yearPrefix = `${year}-`;
   const completedTaskIds = new Set(state.workspace.tasks
-    .filter((task) => task.status === STATUS_COMPLETED && String(task.date || task.completed_at || "").startsWith(yearPrefix))
+    .filter((task) => task.status === STATUS_COMPLETED && String(task.completed_at || task.date || "").startsWith(yearPrefix))
     .map((task) => task.id));
   const completedProjectIds = new Set(state.workspace.projects
-    .filter((project) => projectFinished(project) && String(project.target_month || project.target_date || "").startsWith(String(year)))
+    .filter((project) => projectFinished(project) && String(project.completed_date || project.target_date || project.target_month || "").startsWith(yearPrefix))
     .map((project) => project.id));
   if (!completedTaskIds.size && !completedProjectIds.size) {
     showToast(`${year} 年沒有可封存的已完成資料`);
@@ -1764,7 +1882,19 @@ function deleteArchive(archiveId) {
 
 function refreshWorkspace() {
   if (CLOUD_MODE) {
-    loadCloudWorkspace().then(() => { showToast("已重新整理雲端資料"); render(); }).catch((error) => showToast(error.message));
+    const localWorkspace = cloneWorkspace(state.workspace);
+    const baseWorkspace = cloudBaseWorkspace;
+    const hasPendingChanges = cloudSavePending || localStorage.getItem(OFFLINE_DIRTY_KEY) === "1";
+    loadCloudWorkspace().then(() => {
+      if (hasPendingChanges) {
+        state.workspace = mergeWorkspaces(state.workspace, localWorkspace, baseWorkspace);
+        saveWorkspace();
+        showToast("已重新整理並保留尚未同步的修改");
+      } else {
+        showToast("已重新整理雲端資料");
+      }
+      render();
+    }).catch((error) => showToast(error.message));
   } else {
     state.workspace = loadWorkspace();
     showToast("已重新整理");
@@ -1787,9 +1917,15 @@ function setupGlobalEvents() {
     updateSyncIndicator("離線保存中", "offline");
     showToast("目前離線，仍可繼續使用");
   });
-  window.addEventListener("online", () => {
+  window.addEventListener("online", async () => {
     updateSyncIndicator("正在恢復同步...", "syncing");
-    saveCloudWorkspace().then(() => showToast("已恢復連線並同步"));
+    try {
+      await reconnectCloudWorkspace();
+      showToast("已恢復連線並同步");
+    } catch (error) {
+      updateSyncIndicator("同步失敗", "error");
+      showToast(error.message || "恢復同步失敗，請稍後再試");
+    }
   });
   $("#refreshButton").addEventListener("click", refreshWorkspace);
   const logoutButton = $("#logoutButton");
@@ -1808,7 +1944,7 @@ function setupGlobalEvents() {
     try {
       const text = await file.text();
       const parsed = JSON.parse(text);
-      if (!parsed.projects || !parsed.tasks) throw new Error("資料格式缺少 projects 或 tasks");
+      if (!workspaceImportIsValid(parsed)) throw new Error("備份資料格式不正確");
       state.workspace = normalizeWorkspace(parsed);
       saveWorkspace();
       state.page = "dashboard";
@@ -2374,9 +2510,13 @@ async function removePushSubscription() {
 }
 
 async function logoutCloud() {
+  window.clearTimeout(cloudSaveTimer);
+  const saved = await saveCloudWorkspace();
+  if (!saved || cloudSavePending) {
+    showToast("尚有資料未完成同步，為避免遺失已暫停登出");
+    return;
+  }
   try {
-    window.clearTimeout(cloudSaveTimer);
-    await saveCloudWorkspace();
     await removePushSubscription();
     await apiFetch("/api/logout", { method: "POST", headers: { "X-CSRF-Token": cloudCsrfToken } });
   } finally {
@@ -2391,7 +2531,16 @@ async function initializeApp() {
   if (!CLOUD_MODE) return;
   updateSyncIndicator("正在讀取雲端資料...", "syncing");
   try {
+    const cachedWorkspace = cloneWorkspace(state.workspace);
+    const cachedBase = readCloudBaseWorkspace();
+    const hasPendingOfflineChanges = localStorage.getItem(OFFLINE_DIRTY_KEY) === "1";
     await loadCloudWorkspace();
+    if (hasPendingOfflineChanges) {
+      state.workspace = mergeWorkspaces(state.workspace, cachedWorkspace, cachedBase);
+      localStorage.setItem(OFFLINE_CACHE_KEY, JSON.stringify(state.workspace));
+      saveWorkspace();
+      showToast("已合併上次尚未同步的離線修改");
+    }
     await registerServiceWorker();
     const url = new URL(window.location.href);
     const snoozeId = url.searchParams.get("snooze");
@@ -2400,7 +2549,7 @@ async function initializeApp() {
       url.searchParams.delete("snooze");
       window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
     }
-    updateSyncIndicator("已連線雲端", "saved");
+    if (!hasPendingOfflineChanges) updateSyncIndicator("已連線雲端", "saved");
     render();
   } catch (error) {
     updateSyncIndicator("離線資料模式", "offline");

@@ -79,6 +79,8 @@ def initial_workspace() -> dict[str, Any]:
             "progress_logs": [],
             "project_messages": [],
             "history": [],
+            "archives": [],
+            "deleted_ids": {},
         }
     source = initial_file.read_text(encoding="utf-8").strip()
     prefix = "window.INITIAL_WORKSPACE ="
@@ -247,14 +249,36 @@ def clear_failed_logins(client: str) -> None:
 
 
 def workspace_payload_is_valid(workspace: Any) -> bool:
+    def record_list(value: Any) -> bool:
+        return isinstance(value, list) and all(isinstance(item, dict) for item in value)
+
     if not isinstance(workspace, dict):
         return False
     if not isinstance(workspace.get("settings"), dict) or not isinstance(workspace.get("deleted_ids"), dict):
         return False
     for field in WORKSPACE_LIST_FIELDS:
         items = workspace.get(field)
-        if not isinstance(items, list) or any(not isinstance(item, dict) for item in items):
+        if not record_list(items):
             return False
+    if any("stages" in project and not record_list(project["stages"]) for project in workspace["projects"]):
+        return False
+    if any("items" in group and not record_list(group["items"]) for group in workspace["checklists"]):
+        return False
+    templates = workspace.get("checklist_templates")
+    if templates is not None:
+        if not record_list(templates):
+            return False
+        for template in templates:
+            sections = template.get("sections")
+            if not record_list(sections) or any(not record_list(section.get("items")) for section in sections):
+                return False
+    archive_fields = WORKSPACE_LIST_FIELDS[:-1]
+    if any(
+        field in archive and not record_list(archive[field])
+        for archive in workspace["archives"]
+        for field in archive_fields
+    ):
+        return False
     return True
 
 
