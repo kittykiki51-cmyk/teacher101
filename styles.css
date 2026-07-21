@@ -3330,8 +3330,7 @@ button.day-cell:hover {
     min-height: calc(62px + env(safe-area-inset-bottom));
     padding-bottom: env(safe-area-inset-bottom);
     border-top: 1px solid var(--border);
-    background: rgba(255, 255, 255, 0.96);
-    backdrop-filter: blur(12px);
+    background: #ffffff;
   }
 
   .bottom-nav button {

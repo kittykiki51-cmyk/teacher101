@@ -126,7 +126,10 @@ const manifest = read("../manifest.json");
 assert(manifest.includes("app-icon-192.png") && manifest.includes("app-icon-512.png") && manifest.includes("maskable"), "The PWA manifest should publish installable app icons");
 
 const worker = read("../service-worker.js");
-assert(worker.includes('teacher-operations-v12'), "PWA cache should be refreshed for project summary and calendar links");
+assert(worker.includes('teacher-operations-v13'), "PWA cache should be refreshed for the performance release");
 assert(worker.includes("icon-house.svg") && worker.includes("app-icon-512.png"), "The PWA shell should cache identity and navigation assets");
+assert(source.includes("cloudSavePending"), "Cloud saves made during an active request should remain queued");
+assert(source.includes("scheduleSearchRender"), "Search input should debounce full-page rendering");
+assert(!styles.includes("backdrop-filter: blur(12px)"), "Mobile navigation should avoid expensive live backdrop blur");
 
 console.log("mobile UX render tests: passed");

@@ -58,8 +58,12 @@ let cloudRevision = 0;
 let cloudCsrfToken = "";
 let cloudSaveTimer = null;
 let cloudSaveInFlight = false;
+let cloudSavePending = false;
 let calendarSwipeUntil = 0;
 let modalViewportCleanup = null;
+let searchRenderTimer = null;
+let lastCalendarActivationKey = "";
+let lastCalendarActivationAt = 0;
 
 const $ = (selector) => document.querySelector(selector);
 
@@ -90,6 +94,7 @@ function saveWorkspace() {
   }
   localStorage.setItem(OFFLINE_CACHE_KEY, JSON.stringify(state.workspace));
   updateSyncIndicator("正在同步...", "syncing");
+  cloudSavePending = true;
   window.clearTimeout(cloudSaveTimer);
   cloudSaveTimer = window.setTimeout(saveCloudWorkspace, 450);
 }
@@ -132,13 +137,21 @@ async function loadCloudWorkspace() {
 }
 
 async function saveCloudWorkspace() {
-  if (!CLOUD_MODE || cloudSaveInFlight) return;
+  if (!CLOUD_MODE) return;
+  if (cloudSaveInFlight) {
+    cloudSavePending = true;
+    return;
+  }
+  window.clearTimeout(cloudSaveTimer);
+  cloudSaveTimer = null;
   cloudSaveInFlight = true;
+  cloudSavePending = false;
   try {
+    const workspaceJSON = JSON.stringify(state.workspace);
     const response = await apiFetch("/api/workspace", {
       method: "PUT",
       headers: { "Content-Type": "application/json", "X-CSRF-Token": cloudCsrfToken },
-      body: JSON.stringify({ workspace: state.workspace, revision: cloudRevision }),
+      body: `{"workspace":${workspaceJSON},"revision":${JSON.stringify(cloudRevision)}}`,
     });
     const result = await response.json();
     if (response.status === 409) {
@@ -146,22 +159,25 @@ async function saveCloudWorkspace() {
       await loadCloudWorkspace();
       state.workspace = mergeWorkspaces(state.workspace, localWorkspace);
       localStorage.setItem(OFFLINE_CACHE_KEY, JSON.stringify(state.workspace));
-      cloudSaveInFlight = false;
+      cloudSavePending = true;
       showToast("已逐筆合併另一台裝置的更新");
-      await saveCloudWorkspace();
       render();
       return;
     }
     if (!response.ok) throw new Error(result.error || "同步失敗");
     cloudRevision = result.revision;
     localStorage.setItem(OFFLINE_CACHE_KEY, JSON.stringify(state.workspace));
-    updateSyncIndicator("已同步雲端", "saved");
+    updateSyncIndicator(cloudSavePending ? "正在同步..." : "已同步雲端", cloudSavePending ? "syncing" : "saved");
   } catch (error) {
     localStorage.setItem(OFFLINE_CACHE_KEY, JSON.stringify(state.workspace));
     updateSyncIndicator(navigator.onLine ? "同步失敗" : "離線保存中", navigator.onLine ? "error" : "offline");
     showToast(navigator.onLine ? error.message : "目前離線，資料已保存在這台裝置");
   } finally {
     cloudSaveInFlight = false;
+    if (cloudSavePending) {
+      window.clearTimeout(cloudSaveTimer);
+      cloudSaveTimer = window.setTimeout(saveCloudWorkspace, 120);
+    }
   }
 }
 
@@ -384,23 +400,51 @@ function setPage(page) {
 
 function renderNav() {
   const activePage = state.page === "projectDetail" ? "projects" : state.page;
-  const html = NAV_ITEMS.map((item) => `
-    <button class="nav-button ${activePage === item.id ? "active" : ""}" data-page="${item.id}">
-      <span class="nav-icon nav-icon-${item.icon}" aria-hidden="true"></span><span>${item.label}</span>
-    </button>
-  `).join("");
-  $("#desktopNav").innerHTML = html;
-  $("#mobileNav").innerHTML = NAV_ITEMS.map((item) => `
-    <button class="${activePage === item.id ? "active" : ""}" data-page="${item.id}">
-      <span class="nav-icon nav-icon-${item.icon}" aria-hidden="true"></span><span>${item.mobileLabel}</span>
-    </button>
-  `).join("");
-  document.querySelectorAll("[data-page]").forEach((button) => {
-    button.addEventListener("click", () => setPage(button.dataset.page));
+  const desktopNav = $("#desktopNav");
+  const mobileNav = $("#mobileNav");
+  if (!desktopNav.dataset.ready) {
+    desktopNav.innerHTML = NAV_ITEMS.map((item) => `
+      <button class="nav-button" data-page="${item.id}">
+        <span class="nav-icon nav-icon-${item.icon}" aria-hidden="true"></span><span>${item.label}</span>
+      </button>
+    `).join("");
+    mobileNav.innerHTML = NAV_ITEMS.map((item) => `
+      <button data-page="${item.id}">
+        <span class="nav-icon nav-icon-${item.icon}" aria-hidden="true"></span><span>${item.mobileLabel}</span>
+      </button>
+    `).join("");
+    [desktopNav, mobileNav].forEach((nav) => nav.querySelectorAll("[data-page]").forEach((button) => {
+      button.addEventListener("click", () => setPage(button.dataset.page));
+    }));
+    desktopNav.dataset.ready = "true";
+    mobileNav.dataset.ready = "true";
+  }
+  [desktopNav, mobileNav].forEach((nav) => {
+    nav.querySelectorAll("[data-page]").forEach((button) => {
+      const active = button.dataset.page === activePage;
+      button.classList.toggle("active", active);
+      if (active) button.setAttribute("aria-current", "page");
+      else button.removeAttribute("aria-current");
+    });
   });
 }
 
+function scheduleSearchRender(focusSelector) {
+  window.clearTimeout(searchRenderTimer);
+  searchRenderTimer = window.setTimeout(() => {
+    searchRenderTimer = null;
+    render();
+    const input = $(focusSelector);
+    if (!input) return;
+    input.focus({ preventScroll: true });
+    const end = input.value.length;
+    if (typeof input.setSelectionRange === "function") input.setSelectionRange(end, end);
+  }, 120);
+}
+
 function render() {
+  window.clearTimeout(searchRenderTimer);
+  searchRenderTimer = null;
   renderNav();
   const item = NAV_ITEMS.find((entry) => entry.id === state.page) || NAV_ITEMS[0];
   const selectedProject = projectById(state.selectedProjectId);
@@ -1281,6 +1325,14 @@ function selectCalendarDate(iso, openMobilePanel = true) {
   if (selected) state.selectedMonth = new Date(selected.getFullYear(), selected.getMonth(), 1);
 }
 
+function calendarDoubleActivation(key) {
+  const now = Date.now();
+  const isDouble = lastCalendarActivationKey === key && now - lastCalendarActivationAt <= 350;
+  lastCalendarActivationKey = isDouble ? "" : key;
+  lastCalendarActivationAt = isDouble ? 0 : now;
+  return isDouble;
+}
+
 function navigateCalendarPeriod(offset) {
   const now = new Date();
   const anchor = offset === 0 ? now : (parseDate(state.selectedCalendarDate) || now);
@@ -1333,7 +1385,7 @@ function bindContentEvents() {
   if (projectSearch) {
     projectSearch.addEventListener("input", (event) => {
       state.query = event.target.value;
-      render();
+      scheduleSearchRender("#projectSearch");
     });
   }
   const roleFilter = $("#projectRoleFilter");
@@ -1362,8 +1414,7 @@ function bindContentEvents() {
   const calendarSearch = $("#calendarSearch");
   if (calendarSearch) calendarSearch.addEventListener("input", (event) => {
     state.calendarQuery = event.target.value;
-    render();
-    $("#calendarSearch")?.focus();
+    scheduleSearchRender("#calendarSearch");
   });
   const calendarStatusFilter = $("#calendarStatusFilter");
   if (calendarStatusFilter) calendarStatusFilter.addEventListener("change", (event) => {
@@ -1524,31 +1575,14 @@ function bindContentEvents() {
     });
   });
 
-  let calendarSelectionTimer = null;
-  let lastCalendarTarget = null;
-  let lastCalendarClickAt = 0;
   document.querySelectorAll("[data-calendar-date]").forEach((button) => {
     button.addEventListener("click", (event) => {
       if (event.target.closest("[data-calendar-task]") || Date.now() < calendarSwipeUntil) return;
-      const clickedAt = Date.now();
-      const isDoubleActivation = lastCalendarTarget === button && clickedAt - lastCalendarClickAt <= 300;
-      window.clearTimeout(calendarSelectionTimer);
-      if (isDoubleActivation) {
-        lastCalendarTarget = null;
-        lastCalendarClickAt = 0;
-        selectCalendarDate(button.dataset.calendarDate, !button.hasAttribute("data-calendar-inline"));
-        render();
-        openTaskDialog({ date: state.selectedCalendarDate, status: "未完成", reminder_minutes: "0" });
-        return;
-      }
-      lastCalendarTarget = button;
-      lastCalendarClickAt = clickedAt;
-      calendarSelectionTimer = window.setTimeout(() => {
-        lastCalendarTarget = null;
-        lastCalendarClickAt = 0;
-        selectCalendarDate(button.dataset.calendarDate, !button.hasAttribute("data-calendar-inline"));
-        render();
-      }, 300);
+      const date = button.dataset.calendarDate;
+      const isDoubleActivation = calendarDoubleActivation(`date:${date}`);
+      selectCalendarDate(date, !button.hasAttribute("data-calendar-inline"));
+      render();
+      if (isDoubleActivation) openTaskDialog({ date, status: "未完成", reminder_minutes: "0" });
     });
   });
   document.querySelectorAll("[data-calendar-drop]").forEach((target) => {
@@ -1566,29 +1600,14 @@ function bindContentEvents() {
       saveWorkspace(); showToast("工作時間已調整"); render();
     });
   });
-  let lastTimeTarget = null;
-  let lastTimeClickAt = 0;
-  let timeSelectionTimer = null;
   document.querySelectorAll("[data-drop-time]").forEach((target) => target.addEventListener("click", (event) => {
     if (event.target.closest("[data-calendar-task]")) return;
-    const clickedAt = Date.now();
-    window.clearTimeout(timeSelectionTimer);
-    if (lastTimeTarget === target && clickedAt - lastTimeClickAt <= 300) {
-      lastTimeTarget = null;
-      lastTimeClickAt = 0;
-      selectCalendarDate(target.dataset.calendarDrop);
-      render();
-      openTaskDialog({ date: target.dataset.calendarDrop, time: target.dataset.dropTime, status: "未完成", reminder_minutes: "0" });
-      return;
-    }
-    lastTimeTarget = target;
-    lastTimeClickAt = clickedAt;
-    timeSelectionTimer = window.setTimeout(() => {
-      lastTimeTarget = null;
-      lastTimeClickAt = 0;
-      selectCalendarDate(target.dataset.calendarDrop);
-      render();
-    }, 300);
+    const date = target.dataset.calendarDrop;
+    const time = target.dataset.dropTime;
+    const isDoubleActivation = calendarDoubleActivation(`time:${date}:${time}`);
+    selectCalendarDate(date);
+    render();
+    if (isDoubleActivation) openTaskDialog({ date, time, status: "未完成", reminder_minutes: "0" });
   }));
   document.querySelectorAll("[data-calendar-add]").forEach((button) => button.addEventListener("click", () => {
     openTaskDialog({ date: button.dataset.calendarAdd || state.selectedCalendarDate, status: "未完成", reminder_minutes: "0" });
@@ -1745,8 +1764,7 @@ function setupGlobalEvents() {
     if (state.page !== "search") state.pageBeforeSearch = state.page;
     state.globalQuery = value;
     state.page = value.trim() ? "search" : state.pageBeforeSearch;
-    render();
-    $("#globalSearch")?.focus();
+    scheduleSearchRender("#globalSearch");
   });
   window.addEventListener("offline", () => {
     updateSyncIndicator("離線保存中", "offline");
@@ -1911,7 +1929,16 @@ function setupModalViewport(layer) {
   };
   const keepFocusedFieldVisible = (event) => {
     if (!event.target.matches("input, select, textarea")) return;
-    window.setTimeout(() => event.target.scrollIntoView({ block: "center", behavior: "smooth" }), 180);
+    window.setTimeout(() => {
+      const field = event.target;
+      if (!field.isConnected) return;
+      const bounds = field.getBoundingClientRect();
+      const visibleTop = viewport?.offsetTop || 0;
+      const visibleBottom = visibleTop + (viewport?.height || window.innerHeight);
+      if (bounds.top < visibleTop + 12 || bounds.bottom > visibleBottom - 12) {
+        field.scrollIntoView({ block: "center", behavior: "auto" });
+      }
+    }, 120);
   };
   viewport?.addEventListener("resize", updateViewport);
   viewport?.addEventListener("scroll", updateViewport);

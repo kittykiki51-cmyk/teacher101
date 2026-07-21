@@ -1,4 +1,4 @@
-const CACHE_NAME = "teacher-operations-v12";
+const CACHE_NAME = "teacher-operations-v13";
 const APP_SHELL = [
   "/", "/styles.css", "/app.js", "/manifest.json", "/app-icon.svg",
   "/app-icon-192.png", "/app-icon-512.png", "/icon-house.svg", "/icon-folders.svg",
@@ -17,10 +17,18 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET" || event.request.url.includes("/api/")) return;
-  event.respondWith(fetch(event.request).then((response) => {
-    if (response.ok && !response.url.endsWith("/login") && new URL(event.request.url).origin === self.location.origin) caches.open(CACHE_NAME).then((cache) => cache.put(event.request, response.clone()));
+  const updateCache = fetch(event.request).then((response) => {
+    if (response.ok && !response.url.endsWith("/login") && new URL(event.request.url).origin === self.location.origin) {
+      caches.open(CACHE_NAME).then((cache) => cache.put(event.request, response.clone()));
+    }
     return response;
-  }).catch(() => caches.match(event.request).then((cached) => cached || caches.match("/"))));
+  });
+  if (event.request.mode === "navigate") {
+    event.respondWith(updateCache.catch(() => caches.match(event.request).then((cached) => cached || caches.match("/"))));
+    return;
+  }
+  event.respondWith(caches.match(event.request).then((cached) => cached || updateCache));
+  event.waitUntil(updateCache.then(() => undefined).catch(() => undefined));
 });
 
 self.addEventListener("push", (event) => {
