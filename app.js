@@ -80,14 +80,13 @@ function loadWorkspace() {
 }
 
 function saveWorkspace() {
-  const indicator = $("#saveIndicator");
   if (!CLOUD_MODE) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state.workspace));
-    if (indicator) indicator.textContent = "已自動保存";
+    updateSyncIndicator("已自動保存", "saved");
     return;
   }
   localStorage.setItem(OFFLINE_CACHE_KEY, JSON.stringify(state.workspace));
-  if (indicator) indicator.textContent = "正在同步...";
+  updateSyncIndicator("正在同步...", "syncing");
   window.clearTimeout(cloudSaveTimer);
   cloudSaveTimer = window.setTimeout(saveCloudWorkspace, 450);
 }
@@ -132,7 +131,6 @@ async function loadCloudWorkspace() {
 async function saveCloudWorkspace() {
   if (!CLOUD_MODE || cloudSaveInFlight) return;
   cloudSaveInFlight = true;
-  const indicator = $("#saveIndicator");
   try {
     const response = await apiFetch("/api/workspace", {
       method: "PUT",
@@ -154,10 +152,10 @@ async function saveCloudWorkspace() {
     if (!response.ok) throw new Error(result.error || "同步失敗");
     cloudRevision = result.revision;
     localStorage.setItem(OFFLINE_CACHE_KEY, JSON.stringify(state.workspace));
-    if (indicator) indicator.textContent = "已同步雲端";
+    updateSyncIndicator("已同步雲端", "saved");
   } catch (error) {
     localStorage.setItem(OFFLINE_CACHE_KEY, JSON.stringify(state.workspace));
-    if (indicator) indicator.textContent = navigator.onLine ? "同步失敗" : "離線保存中";
+    updateSyncIndicator(navigator.onLine ? "同步失敗" : "離線保存中", navigator.onLine ? "error" : "offline");
     showToast(navigator.onLine ? error.message : "目前離線，資料已保存在這台裝置");
   } finally {
     cloudSaveInFlight = false;
@@ -232,7 +230,8 @@ function dateISO(date) {
 function humanDate(value) {
   const date = parseDate(value);
   if (!date) return "未設定";
-  return `${date.getMonth() + 1}/${date.getDate()}`;
+  const prefix = date.getFullYear() === new Date().getFullYear() ? "" : `${date.getFullYear()} 年 `;
+  return `${prefix}${date.getMonth() + 1} 月 ${date.getDate()} 日`;
 }
 
 function monthKey(date) {
@@ -337,12 +336,38 @@ function pill(label, tone = "") {
   return `<span class="pill ${tone}">${escapeHTML(label)}</span>`;
 }
 
-function showToast(message) {
+function emptyState(message, actionLabel = "", actionAttributes = "") {
+  return `<div class="empty-state"><span>${escapeHTML(message)}</span>${actionLabel ? `<button type="button" class="small-button" ${actionAttributes}>${escapeHTML(actionLabel)}</button>` : ""}</div>`;
+}
+
+function updateSyncIndicator(message, tone = "saved") {
+  const indicator = $("#saveIndicator");
+  if (!indicator) return;
+  indicator.textContent = message;
+  indicator.title = message;
+  indicator.dataset.syncTone = tone;
+}
+
+function showToast(message, undoHandler = null) {
   const toast = $("#toast");
-  toast.textContent = message;
+  toast.replaceChildren();
+  const label = document.createElement("span");
+  label.textContent = message;
+  toast.append(label);
+  if (typeof undoHandler === "function") {
+    const undoButton = document.createElement("button");
+    undoButton.type = "button";
+    undoButton.textContent = "復原";
+    undoButton.addEventListener("click", () => {
+      window.clearTimeout(showToast.timer);
+      toast.classList.remove("show");
+      undoHandler();
+    });
+    toast.append(undoButton);
+  }
   toast.classList.add("show");
   window.clearTimeout(showToast.timer);
-  showToast.timer = window.setTimeout(() => toast.classList.remove("show"), 2200);
+  showToast.timer = window.setTimeout(() => toast.classList.remove("show"), undoHandler ? 5000 : 2200);
 }
 
 function setPage(page) {
@@ -395,6 +420,8 @@ function render() {
     settings: renderSettings,
     search: renderGlobalSearch,
   };
+  document.body.dataset.page = state.page;
+  $("#content").className = `content content-${state.page}`;
   $("#content").innerHTML = (renderers[state.page] || renderDashboard)();
   bindContentEvents();
 }
@@ -467,15 +494,15 @@ function renderDashboard() {
           <h3>今日電話聯繫</h3>
           <button class="primary-button small-primary" data-phone-add>新增電話</button>
         </div>
-        <p class="muted panel-subtitle">${today.getMonth() + 1}/${today.getDate()}，待聯繫排前面，完成後保留到今天結束。</p>
+        <p class="muted panel-subtitle">${humanDate(todayISO())}，待聯繫排前面，完成後保留到今天結束。</p>
         <div class="list">${taskList(todayPhoneTasks().slice(0, 8), "今天尚未安排電話聯繫。", true)}</div>
       </section>
       <section class="home-panel today-work-panel">
         <h3>今日工作</h3>
-        <p class="muted panel-subtitle">${today.getMonth() + 1}/${today.getDate()}，電話聯繫已獨立顯示，其餘工作依時間排序。</p>
+        <p class="muted panel-subtitle">${humanDate(todayISO())}，電話聯繫已獨立顯示，其餘工作依時間排序。</p>
         ${tasks[0] ? `<p class="priority-line">今日優先：${escapeHTML(tasks[0].title || "未命名工作")}${projectById(tasks[0].project_id) ? `｜${escapeHTML(projectById(tasks[0].project_id).course || "")}` : ""}</p>` : ""}
         <div class="list">${homeTaskRows(tasks, "今天尚未安排其他工作。")}</div>
-        <button class="primary-button weekly-button" data-page="calendar">開啟工作月曆</button>
+        <button class="ghost-button weekly-button" data-page="calendar">開啟工作月曆</button>
       </section>
     </div>
     </div>
@@ -497,7 +524,7 @@ function projectSimpleStatus(project) {
 }
 
 function homeProjectCards(projects) {
-  if (!projects.length) return `<p class="empty-green">本月尚未指定正式課程。</p>`;
+  if (!projects.length) return emptyState("本月尚未指定正式課程。", "新增課程專案", "data-new-project");
   return projects.map((project) => {
     const status = projectSimpleStatus(project);
     const tone = status === "已完成" || status === "順利" || status === "可上架" ? "green" : status === "需追蹤" ? "amber" : "red";
@@ -514,8 +541,7 @@ function homeProjectCards(projects) {
         <p class="next-line">下一步行動：${next ? `${humanDate(next.date)}　${escapeHTML(next.title || "未命名工作")}` : "尚未排程　目前沒有未完成工作"}</p>
         ${lastMessage ? `<p class="muted">最後紀錄：${escapeHTML(String(lastMessage).replaceAll("\\n", " ").slice(0, 42))}</p>` : ""}
         <div class="home-project-actions">
-          <button class="ghost-button" data-project-open="${escapeHTML(project.id)}">查看專案</button>
-          <button class="primary-button small-primary">新增紀錄</button>
+          <button class="ghost-button" data-project-open="${escapeHTML(project.id)}">開啟專案</button>
         </div>
       </article>
     `;
@@ -523,7 +549,7 @@ function homeProjectCards(projects) {
 }
 
 function homeTaskRows(tasks, emptyText) {
-  if (!tasks.length) return `<p class="empty-green">${emptyText}</p>`;
+  if (!tasks.length) return emptyState(emptyText, "新增工作", `data-calendar-add="${todayISO()}"`);
   return tasks.map((task) => {
     const project = projectById(task.project_id);
     const statusTone = task.status === STATUS_WAITING ? "amber" : task.date && task.date < todayISO() ? "red" : "muted-dot";
@@ -654,7 +680,7 @@ function projectNextStep(project) {
 }
 
 function projectCards(projects, emptyText) {
-  if (!projects.length) return `<div class="project-empty card"><p class="muted">${escapeHTML(emptyText)}</p></div>`;
+  if (!projects.length) return `<div class="project-empty">${emptyState(emptyText, "新增課程專案", "data-new-project")}</div>`;
   return projects.map((project) => {
     const finished = projectFinished(project);
     const risk = projectRisk(project);
@@ -670,14 +696,14 @@ function projectCards(projects, emptyText) {
             <h3>${escapeHTML(project.course || "未命名課程")}</h3>
             <p class="project-meta ${cooperation === "需觀察" ? "amber-text" : cooperation === "暫緩" ? "red-text" : "muted"}">${escapeHTML(meta)}</p>
           </div>
-          ${pill(badge, finished ? "green" : "")}
+          ${pill(badge, finished ? "gray" : "")}
         </div>
         <p class="project-stage-line ${risk.tone}-text">${finished ? "此專案已結束，不再列入待處理工作" : `目前階段：${escapeHTML(project.current_stage || "未設定")}　狀態：${escapeHTML(risk.label)}`}</p>
         <p class="project-next-line ${finished ? "muted" : next.date ? "primary-text" : "red-text"}">${finished
           ? `完成日期：${humanDate(project.completed_date || project.target_date)}`
           : `下一步（自動）：${next.date ? humanDate(next.date) : "尚未排程"}　${escapeHTML(next.title)}`}</p>
         <div class="project-card-actions">
-          <button class="primary-button small-project-button" data-project-open="${escapeHTML(project.id)}">開啟專案</button>
+          <button class="ghost-button small-project-button ${finished ? "" : "project-open-button"}" data-project-open="${escapeHTML(project.id)}">開啟專案</button>
           <button class="ghost-button small-project-button" data-project-edit="${escapeHTML(project.id)}">編輯資料</button>
         </div>
       </article>
@@ -826,13 +852,13 @@ function renderChecklistGroup(group) {
 }
 
 function taskList(tasks, emptyText, phoneMode = false) {
-  if (!tasks.length) return `<p class="muted">${emptyText}</p>`;
+  if (!tasks.length) return emptyState(emptyText, phoneMode ? "新增電話" : "新增工作", phoneMode ? "data-phone-add" : `data-calendar-add="${todayISO()}"`);
   return tasks.map((task) => {
     const project = projectById(task.project_id);
     const completed = task.status === STATUS_COMPLETED || task.phone_status === "已聯繫";
     const statusTone = completed ? "green" : task.status === STATUS_WAITING ? "amber" : task.date && task.date < todayISO() ? "red" : "";
     return `
-      <article class="item-card">
+      <article class="item-card ${completed ? "completed" : ""}">
         <div class="item-row">
           <div>
             <p class="item-title">${escapeHTML(task.title || "未命名工作")}</p>
@@ -897,17 +923,25 @@ function calendarColorStyle(task) {
   return `--event-color:${color.color};--event-soft:${color.soft};--event-border:${color.border}`;
 }
 
+function calendarTaskKind(task) {
+  if (task.task_type === TASK_TYPE_PHONE) return { short: "電話", label: "電話聯繫" };
+  if (task.project_id) return { short: "專案", label: "專案工作" };
+  return { short: "個人", label: "個人工作" };
+}
+
 function calendarEvent(task, extraClass = "") {
-  return `<button type="button" draggable="true" class="calendar-event ${extraClass} ${task.status === STATUS_COMPLETED ? "completed" : ""}" style="${calendarColorStyle(task)}" data-calendar-task="${escapeHTML(task.id)}" title="拖曳以調整日期或時間"><b>${escapeHTML(task.time || "全天")}</b><span>${escapeHTML(task.title || "未命名工作")}</span></button>`;
+  const kind = calendarTaskKind(task);
+  return `<button type="button" draggable="true" class="calendar-event ${extraClass} ${task.status === STATUS_COMPLETED ? "completed" : ""}" style="${calendarColorStyle(task)}" data-calendar-task="${escapeHTML(task.id)}" title="${escapeHTML(kind.label)}，拖曳以調整日期或時間"><i class="calendar-event-kind">${escapeHTML(kind.short)}</i><b>${escapeHTML(task.time || "全天")}</b><span>${escapeHTML(task.title || "未命名工作")}</span></button>`;
 }
 
 function renderCalendarPanelTask(task) {
   const project = projectById(task.project_id);
   const completed = task.status === STATUS_COMPLETED;
+  const kind = calendarTaskKind(task);
   return `<article class="calendar-panel-task ${completed ? "completed" : ""}" style="${calendarColorStyle(task)}">
     <div class="calendar-panel-task-main">
       ${completed ? `<span class="calendar-task-color" aria-hidden="true"></span>` : `<button type="button" class="calendar-task-color mobile-task-complete" data-complete="${escapeHTML(task.id)}" aria-label="完成 ${escapeHTML(task.title || "未命名工作")}"></button>`}
-      <button type="button" class="calendar-panel-task-copy mobile-task-content" data-task-edit="${escapeHTML(task.id)}"><p class="calendar-panel-title">${escapeHTML(task.title || "未命名工作")}</p><p class="calendar-panel-meta">${escapeHTML(task.time || "全天")} · ${escapeHTML(project?.course || "我的工作")}${task.reminder_minutes !== undefined && task.reminder_minutes !== "" ? ` · ${escapeHTML(reminderLabel(task.reminder_minutes))}` : ""}</p>${task.note ? `<p class="calendar-panel-note">${escapeHTML(task.note)}</p>` : ""}</button>
+      <button type="button" class="calendar-panel-task-copy mobile-task-content" data-task-edit="${escapeHTML(task.id)}"><p class="calendar-panel-title">${escapeHTML(task.title || "未命名工作")}</p><p class="calendar-panel-meta">${escapeHTML(kind.label)} · ${escapeHTML(task.time || "全天")} · ${escapeHTML(project?.course || "我的工作")}${task.reminder_minutes !== undefined && task.reminder_minutes !== "" ? ` · ${escapeHTML(reminderLabel(task.reminder_minutes))}` : ""}</p>${task.note ? `<p class="calendar-panel-note">${escapeHTML(task.note)}</p>` : ""}</button>
       ${completed ? "" : taskOverflowMenu(task, { postpone: true, delete: true })}
     </div>
     <div class="calendar-panel-actions">
@@ -919,7 +953,7 @@ function renderCalendarPanelTask(task) {
 }
 
 function renderCalendarPanel(tasks) {
-  if (!tasks.length) return `<div class="calendar-panel-empty"><strong>這一天沒有工作</strong><p>雙擊日期或按新增工作，就能安排事項。</p></div>`;
+  if (!tasks.length) return `<div class="calendar-panel-empty"><strong>這一天沒有工作</strong><p>雙擊日期或使用下方按鈕安排事項。</p><button type="button" class="small-button" data-calendar-add="${escapeHTML(state.selectedCalendarDate)}">新增當日工作</button></div>`;
   return tasks.map(renderCalendarPanelTask).join("");
 }
 
@@ -1303,9 +1337,15 @@ function bindContentEvents() {
     button.addEventListener("click", () => {
       const task = state.workspace.tasks.find((item) => item.id === button.dataset.complete);
       if (!task) return;
+      const tasksBeforeCompletion = state.workspace.tasks.map((item) => ({ ...item }));
       completeTask(task);
       saveWorkspace();
-      showToast("已標記完成");
+      showToast("已標記完成", () => {
+        state.workspace.tasks = tasksBeforeCompletion;
+        saveWorkspace();
+        render();
+        showToast("已復原完成狀態");
+      });
       render();
     });
   });
@@ -1314,12 +1354,18 @@ function bindContentEvents() {
     button.addEventListener("click", () => {
       const task = state.workspace.tasks.find((item) => item.id === button.dataset.phone);
       if (!task) return;
+      const tasksBeforeUpdate = state.workspace.tasks.map((item) => ({ ...item }));
       task.phone_status = button.dataset.status;
       if (button.dataset.status === "已聯繫") {
         completeTask(task);
       }
       saveWorkspace();
-      showToast(`電話狀態已更新：${button.dataset.status}`);
+      showToast(`電話狀態已更新：${button.dataset.status}`, () => {
+        state.workspace.tasks = tasksBeforeUpdate;
+        saveWorkspace();
+        render();
+        showToast("已復原電話狀態");
+      });
       render();
     });
   });
@@ -1585,11 +1631,11 @@ function setupGlobalEvents() {
     $("#globalSearch")?.focus();
   });
   window.addEventListener("offline", () => {
-    if ($("#saveIndicator")) $("#saveIndicator").textContent = "離線保存中";
+    updateSyncIndicator("離線保存中", "offline");
     showToast("目前離線，仍可繼續使用");
   });
   window.addEventListener("online", () => {
-    if ($("#saveIndicator")) $("#saveIndicator").textContent = "正在恢復同步...";
+    updateSyncIndicator("正在恢復同步...", "syncing");
     saveCloudWorkspace().then(() => showToast("已恢復連線並同步"));
   });
   $("#refreshButton").addEventListener("click", refreshWorkspace);
@@ -2150,8 +2196,7 @@ async function initializeApp() {
   setupGlobalEvents();
   render();
   if (!CLOUD_MODE) return;
-  const indicator = $("#saveIndicator");
-  if (indicator) indicator.textContent = "正在讀取雲端資料...";
+  updateSyncIndicator("正在讀取雲端資料...", "syncing");
   try {
     await loadCloudWorkspace();
     await registerServiceWorker();
@@ -2162,10 +2207,10 @@ async function initializeApp() {
       url.searchParams.delete("snooze");
       window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
     }
-    if (indicator) indicator.textContent = "已連線雲端";
+    updateSyncIndicator("已連線雲端", "saved");
     render();
   } catch (error) {
-    if (indicator) indicator.textContent = "離線資料模式";
+    updateSyncIndicator("離線資料模式", "offline");
     showToast("無法連線雲端，已載入這台裝置的最近資料");
     await registerServiceWorker().catch(() => null);
     render();

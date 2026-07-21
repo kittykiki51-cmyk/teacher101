@@ -9,7 +9,7 @@ const source = $.NSString.stringWithContentsOfFileEncodingError(sourcePath, $.NS
 const testableSource = source.replace(/\ninitializeApp\(\);\s*$/, "");
 const storage = { getItem: () => null, setItem: () => null, removeItem: () => null };
 const browserWindow = { location: { protocol: "file:" }, INITIAL_WORKSPACE: null };
-const harness = new Function("window", "localStorage", `${testableSource}\nreturn { state, todayISO, parseDate, renderMonthCalendar, renderWeekCalendar, renderDayCalendar, renderCalendarPanel, renderMobileCalendarAgenda, calendarColor, calendarHours };`)(browserWindow, storage);
+const harness = new Function("window", "localStorage", `${testableSource}\nreturn { state, todayISO, parseDate, humanDate, renderMonthCalendar, renderWeekCalendar, renderDayCalendar, renderCalendarPanel, renderMobileCalendarAgenda, calendarColor, calendarTaskKind, calendarHours };`)(browserWindow, storage);
 
 const today = harness.todayISO();
 harness.state.workspace = {
@@ -21,7 +21,7 @@ harness.state.workspace = {
   tasks: [
     { id: "task-1", project_id: "", title: "Personal", date: today, time: "08:30", status: "未完成", reminder_minutes: "10" },
     { id: "task-2", project_id: "project-alpha", title: "Course A", date: today, time: "09:00", status: "未完成" },
-    { id: "task-3", project_id: "project-bravo", title: "Course B", date: today, time: "10:00", status: "未完成" },
+    { id: "task-3", project_id: "project-bravo", title: "Course B", date: today, time: "10:00", status: "未完成", task_type: "電話聯繫" },
     { id: "task-4", project_id: "project-alpha", title: "Escaped <task>", date: today, time: "", status: "未完成" },
   ],
   checklists: [], progress_logs: [], project_messages: [], history: [], archives: [], deleted_ids: {},
@@ -32,6 +32,11 @@ const anchor = harness.parseDate(today);
 const month = harness.renderMonthCalendar(anchor);
 assert(month.includes("另有 1 件"), "Month view should limit a date to three visible tasks");
 assert(month.includes("Escaped &lt;task&gt;"), "Calendar task titles must be HTML escaped");
+assert(month.includes("calendar-event-kind"), "Calendar events should display a compact work-type label");
+assert(harness.calendarTaskKind(harness.state.workspace.tasks[0]).label === "個人工作", "Personal work should have a visible calendar type");
+assert(harness.calendarTaskKind(harness.state.workspace.tasks[1]).label === "專案工作", "Project work should have a visible calendar type");
+assert(harness.calendarTaskKind(harness.state.workspace.tasks[2]).label === "電話聯繫", "Phone work should have a visible calendar type");
+assert(harness.humanDate(today).includes("月") && harness.humanDate(today).includes("日"), "Displayed dates should use one readable Chinese format");
 
 const week = harness.renderWeekCalendar(anchor);
 assert(week.includes("week-hour-row"), "Week view should render a time grid");

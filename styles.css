@@ -21,6 +21,13 @@
   --sidebar-text: #ffffff;
   --sidebar-muted: #b8bdc4;
   --shadow: 0 1px 2px rgba(24, 35, 48, 0.035), 0 8px 24px rgba(24, 35, 48, 0.035);
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --content-width: 1280px;
+  --wide-content-width: 1560px;
 }
 
 * {
@@ -211,14 +218,32 @@ textarea:focus-visible {
   top: 0;
   z-index: 16;
   min-height: 76px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  display: block;
   margin: -12px -28px 18px;
   padding: 0 28px;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
+}
+
+.topbar-inner {
+  width: 100%;
+  max-width: var(--content-width);
+  min-height: 76px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin: 0 auto;
+}
+
+body[data-page="calendar"] .topbar-inner,
+body[data-page="calendar"] .content {
+  max-width: var(--wide-content-width);
+}
+
+body[data-page="projectDetail"] .topbar-inner,
+body[data-page="projectDetail"] .content {
+  max-width: 1380px;
 }
 
 .topbar h2 {
@@ -263,8 +288,40 @@ textarea:focus-visible {
 }
 
 .save-indicator {
+  width: 116px;
+  min-width: 116px;
+  min-height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface-alt);
   color: var(--muted);
+  padding: 0 8px;
+  overflow: hidden;
   font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.save-indicator[data-sync-tone="saved"] {
+  border-color: #cfe0d4;
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.save-indicator[data-sync-tone="syncing"] {
+  border-color: #d8defc;
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+.save-indicator[data-sync-tone="offline"],
+.save-indicator[data-sync-tone="error"] {
+  border-color: #ead9bb;
+  background: var(--amber-soft);
+  color: var(--amber);
 }
 
 .primary-button,
@@ -299,9 +356,14 @@ textarea:focus-visible {
 }
 
 .danger-button {
-  border-color: var(--red-soft);
-  background: var(--red-soft);
+  border-color: #e7c4c8;
+  background: var(--surface);
   color: var(--red);
+}
+
+.danger-button:hover {
+  border-color: var(--red);
+  background: var(--red-soft);
 }
 
 .icon-button {
@@ -312,7 +374,7 @@ textarea:focus-visible {
 
 .content {
   width: 100%;
-  max-width: 1560px;
+  max-width: var(--content-width);
   display: grid;
   gap: 0;
   margin: 0 auto;
@@ -320,7 +382,7 @@ textarea:focus-visible {
 
 .grid {
   display: grid;
-  gap: 14px;
+  gap: var(--space-4);
 }
 
 .dashboard-grid {
@@ -342,7 +404,7 @@ textarea:focus-visible {
 }
 
 .card {
-  padding: 18px;
+  padding: var(--space-4);
 }
 
 .desktop-page-title {
@@ -368,9 +430,6 @@ textarea:focus-visible {
 .goal-card,
 .home-panel {
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  box-shadow: var(--shadow);
 }
 
 .goal-card {
@@ -378,8 +437,10 @@ textarea:focus-visible {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   column-gap: 24px;
-  margin-bottom: 14px;
-  padding: 14px 18px;
+  margin-bottom: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: var(--space-4);
 }
 
 .goal-head {
@@ -429,7 +490,8 @@ textarea:focus-visible {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   grid-template-rows: auto auto;
   grid-template-areas: "today phone" "formal formal";
-  gap: 14px;
+  column-gap: var(--space-6);
+  row-gap: 0;
   align-items: start;
 }
 
@@ -446,11 +508,21 @@ textarea:focus-visible {
 }
 
 .home-panel {
-  padding: 15px 17px;
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: var(--space-4) 0;
 }
 
 .today-work-panel {
-  border-top: 3px solid var(--primary);
+  border-top: 2px solid var(--primary);
+}
+
+.phone-panel {
+  border-left: 1px solid var(--border);
+  padding-left: var(--space-6);
 }
 
 .formal-panel .list {
@@ -484,6 +556,10 @@ textarea:focus-visible {
   transition: border-color 0.16s ease, background-color 0.16s ease;
 }
 
+.home-project-card .muted {
+  color: #7b858e;
+}
+
 .home-project-card:hover {
   border-color: #cbd4dc;
   background: var(--surface);
@@ -501,8 +577,13 @@ textarea:focus-visible {
 
 .next-line,
 .priority-line {
-  color: var(--primary);
+  color: var(--text);
   font-weight: 700;
+}
+
+.priority-line {
+  border-left: 3px solid var(--primary);
+  padding-left: var(--space-2);
 }
 
 .home-project-actions {
@@ -581,12 +662,30 @@ textarea:focus-visible {
 
 .weekly-button {
   width: 100%;
-  margin-top: 14px;
+  margin-top: var(--space-3);
 }
 
 .empty-green {
   margin: 18px 0;
   color: var(--green);
+}
+
+.empty-state {
+  min-height: 74px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.55);
+  color: var(--muted);
+  padding: var(--space-3);
+  font-size: 13px;
+}
+
+.empty-state .small-button {
+  flex: 0 0 auto;
 }
 
 .card-header {
@@ -622,6 +721,17 @@ textarea:focus-visible {
   gap: 7px;
   padding: 12px;
   box-shadow: none;
+}
+
+.item-card.completed {
+  border-color: #e6eaed;
+  background: var(--surface-alt);
+  color: var(--muted);
+  opacity: 0.78;
+}
+
+.item-card.completed .item-title {
+  font-weight: 600;
 }
 
 .item-row {
@@ -729,10 +839,11 @@ textarea:focus-visible {
   grid-template-columns: minmax(220px, 1fr) 110px 100px auto;
   gap: 8px;
   margin-bottom: 12px;
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  background: var(--surface);
-  padding: 9px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  padding: 0 0 var(--space-3);
 }
 
 .completed-project-toggle.active {
@@ -753,8 +864,7 @@ textarea:focus-visible {
 
 .project-empty {
   grid-column: 1 / -1;
-  text-align: center;
-  padding: 28px 20px;
+  padding: var(--space-6) 0;
 }
 
 .desktop-project-card,
@@ -784,6 +894,16 @@ textarea:focus-visible {
 }
 
 .desktop-project-card.finished h3 {
+  color: var(--muted);
+}
+
+.desktop-project-card.finished {
+  border-color: #e6eaed;
+  background: var(--surface-alt);
+}
+
+.desktop-project-card.finished .project-stage-line,
+.desktop-project-card.finished .project-next-line {
   color: var(--muted);
 }
 
@@ -825,21 +945,25 @@ textarea:focus-visible {
   min-height: 0;
   margin-top: 6px;
   border-radius: 5px;
-  background: var(--primary-soft);
+  border-left: 3px solid var(--primary);
+  background: var(--surface-alt);
   padding: 7px 9px;
   font-size: 13px;
   font-weight: 700;
 }
 
 .project-next-line.green-text {
+  border-left-color: var(--green);
   background: var(--green-soft);
 }
 
 .project-next-line.red-text {
+  border-left-color: var(--red);
   background: var(--red-soft);
 }
 
 .desktop-project-card.finished .project-next-line {
+  border-left-color: var(--border);
   background: var(--gray-soft);
 }
 
@@ -854,6 +978,17 @@ textarea:focus-visible {
   min-height: 31px;
   padding: 0 11px;
   font-size: 13px;
+}
+
+.project-open-button {
+  border-color: #d8defc;
+  color: var(--primary);
+  font-weight: 700;
+}
+
+.project-open-button:hover {
+  border-color: var(--primary);
+  background: var(--primary-soft);
 }
 
 .primary-text { color: var(--primary); }
@@ -1319,10 +1454,11 @@ button:disabled {
   grid-template-columns: minmax(220px, 1fr) 120px auto;
   gap: 8px;
   margin-bottom: 14px;
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  background: var(--surface-alt);
-  padding: 8px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  padding: 0 0 var(--space-3);
 }
 
 .calendar-filters .search-input {
@@ -1490,6 +1626,10 @@ button:disabled {
   font-size: 11px;
 }
 
+.calendar-panel-empty .small-button {
+  margin-top: var(--space-3);
+}
+
 .day-name,
 .day-cell {
   min-height: 108px;
@@ -1574,6 +1714,19 @@ button.day-cell:hover {
   line-height: 1.25;
   text-align: left;
   cursor: grab;
+}
+
+.calendar-event-kind {
+  display: inline-block;
+  margin-right: 4px;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  padding: 0 3px;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 1.35;
+  opacity: 0.76;
 }
 
 .calendar-event span {
@@ -1949,7 +2102,11 @@ button.day-cell:hover {
   bottom: 22px;
   transform: translateX(-50%) translateY(24px);
   max-width: min(520px, calc(100vw - 32px));
-  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: 10px 12px 10px 16px;
   border-radius: 8px;
   background: var(--text);
   color: #fff;
@@ -1957,6 +2114,16 @@ button.day-cell:hover {
   pointer-events: none;
   transition: 0.2s ease;
   z-index: 30;
+}
+
+.toast button {
+  min-height: 30px;
+  border: 1px solid rgba(255, 255, 255, 0.38);
+  border-radius: 5px;
+  background: transparent;
+  color: #ffffff;
+  padding: 0 10px;
+  font-weight: 700;
 }
 
 .toast.show {
@@ -2045,13 +2212,20 @@ button.day-cell:hover {
     top: 0;
     z-index: 18;
     min-height: 84px;
+    display: block;
+    margin: 0 -10px 10px;
+    padding: 0 10px;
+    border-bottom-color: #e5e9ed;
+    box-shadow: 0 4px 14px rgba(26, 42, 53, 0.045);
+  }
+
+  .topbar-inner {
+    position: relative;
+    min-height: 84px;
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     gap: 7px;
-    margin: 0 -10px 10px;
-    padding: 8px 10px;
-    border-bottom-color: #e5e9ed;
-    box-shadow: 0 4px 14px rgba(26, 42, 53, 0.045);
+    padding: 8px 0;
   }
 
   .topbar h2 {
@@ -2070,7 +2244,7 @@ button.day-cell:hover {
   .topbar-title-block {
     min-width: 0;
     display: flex;
-    align-items: flex-end;
+    align-items: center;
     justify-content: space-between;
     gap: 8px;
   }
@@ -2081,8 +2255,7 @@ button.day-cell:hover {
   }
 
   .topbar-title-block .eyebrow {
-    flex: 0 0 auto;
-    white-space: nowrap;
+    display: none;
   }
 
   .topbar-actions {
@@ -2106,9 +2279,23 @@ button.day-cell:hover {
 
   .desktop-button-label,
   #refreshButton,
-  #logoutButton,
-  .topbar .save-indicator {
+  #logoutButton {
     display: none;
+  }
+
+  .topbar .save-indicator {
+    position: absolute;
+    top: 8px;
+    right: 0;
+    width: 82px;
+    min-width: 82px;
+    min-height: 24px;
+    display: inline-flex;
+    font-size: 10px;
+  }
+
+  .topbar-title-block h2 {
+    padding-right: 90px;
   }
 
   .mobile-button-label {
@@ -2199,6 +2386,11 @@ button.day-cell:hover {
     border-radius: 0;
     box-shadow: none;
     padding: 13px 12px;
+  }
+
+  .phone-panel {
+    border-left: 0;
+    padding-left: 12px;
   }
 
   .goal-card {
@@ -2295,7 +2487,7 @@ button.day-cell:hover {
     grid-template-columns: 1fr 1fr;
     gap: 6px;
     margin-bottom: 8px;
-    padding: 7px;
+    padding: 0 0 8px;
   }
 
   .project-filters .search-input {
@@ -2519,8 +2711,8 @@ button.day-cell:hover {
   .calendar-filters {
     grid-template-columns: minmax(0, 1fr) 94px;
     gap: 5px;
-    margin: 0 -2px 9px;
-    padding: 6px;
+    margin: 0 0 9px;
+    padding: 0 0 8px;
   }
 
   .calendar-filters .primary-button {
@@ -3149,13 +3341,13 @@ button.day-cell:hover {
   }
 
   .bottom-nav .active {
-    background: var(--primary-soft);
+    background: transparent;
     color: var(--primary);
     font-weight: 800;
   }
 
   .bottom-nav .active::before {
-    background: var(--primary);
+    background: transparent;
   }
 
   .toast {

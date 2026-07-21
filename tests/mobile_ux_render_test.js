@@ -47,6 +47,7 @@ assert(dashboard.includes(`data-complete=\"${generalTask.id}\"`), "Today's work 
 assert(dashboard.includes(`data-task-edit=\"${generalTask.id}\"`), "Today's work should provide a direct edit action");
 assert(dashboard.includes("mobile-task-complete"), "Mobile tasks should provide a one-tap completion control");
 assert(dashboard.includes("task-overflow"), "Secondary mobile task actions should use an overflow menu");
+assert(dashboard.includes("empty-state") || dashboard.includes("home-task-row"), "Dashboard sections should provide content or a guided empty state");
 
 const phoneList = harness.taskList([phoneTask], "", true);
 assert(phoneList.includes(`data-task-edit=\"${phoneTask.id}\"`), "Phone tasks should remain editable");
@@ -92,6 +93,11 @@ assert(styles.includes('.modal-card .search-input') && styles.includes("font-siz
 assert(styles.includes(".nav-icon-house") && styles.includes(".nav-icon-calendar-days"), "Navigation icon masks should be available");
 assert(styles.includes(".pill.gray") && styles.includes("border-radius: 5px"), "Status badges should use the standardized compact treatment");
 assert(styles.includes("button:active:not(:disabled)"), "Buttons should provide restrained press feedback");
+assert(styles.includes("--content-width: 1280px") && styles.includes('body[data-page="calendar"] .content'), "Standard pages should use a focused width while calendars remain wide");
+assert(styles.includes(".item-card.completed") && styles.includes("opacity: 0.78"), "Completed work should use reduced visual weight");
+assert(styles.includes(".bottom-nav .active") && styles.includes("background: transparent"), "Mobile navigation should use a single active-state signal");
+assert(source.includes("updateSyncIndicator") && source.includes("indicator.dataset.syncTone = tone"), "Sync feedback should use stable visual states");
+assert(source.includes('showToast("已標記完成", () =>'), "Completing work should provide a short undo opportunity");
 
 const index = read("../index.html");
 assert(index.includes("mobile-button-label"), "Mobile top bar should use a compact add label");
@@ -101,7 +107,7 @@ const manifest = read("../manifest.json");
 assert(manifest.includes("app-icon-192.png") && manifest.includes("app-icon-512.png") && manifest.includes("maskable"), "The PWA manifest should publish installable app icons");
 
 const worker = read("../service-worker.js");
-assert(worker.includes('teacher-operations-v9'), "PWA cache should be refreshed for the visual polish update");
+assert(worker.includes('teacher-operations-v10'), "PWA cache should be refreshed for the layout refinement update");
 assert(worker.includes("icon-house.svg") && worker.includes("app-icon-512.png"), "The PWA shell should cache identity and navigation assets");
 
 console.log("mobile UX render tests: passed");
