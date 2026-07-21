@@ -839,7 +839,7 @@ body[data-page="projectDetail"] .content {
   margin-bottom: 10px;
 }
 
-.project-status-switch {
+.segmented-control.project-status-switch {
   grid-template-columns: repeat(2, minmax(132px, auto));
 }
 
@@ -849,9 +849,11 @@ body[data-page="projectDetail"] .content {
   justify-content: center;
   gap: 7px;
   padding: 0 14px;
+  white-space: nowrap;
 }
 
 .project-status-switch button span {
+  flex: 0 0 auto;
   min-width: 22px;
   border-radius: 999px;
   background: var(--gray-soft);
@@ -2697,7 +2699,7 @@ button.day-cell:hover {
     margin-bottom: 8px;
   }
 
-  .project-status-switch {
+  .segmented-control.project-status-switch {
     width: 100%;
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

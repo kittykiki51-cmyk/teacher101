@@ -168,10 +168,11 @@ const manifest = read("../manifest.json");
 assert(manifest.includes("app-icon-192.png") && manifest.includes("app-icon-512.png") && manifest.includes("maskable"), "The PWA manifest should publish installable app icons");
 
 const worker = read("../service-worker.js");
-assert(worker.includes('teacher-operations-v14'), "PWA cache should be refreshed for project completion tabs");
+assert(worker.includes('teacher-operations-v15'), "PWA cache should be refreshed for the project status tab layout fix");
 assert(worker.includes("icon-house.svg") && worker.includes("app-icon-512.png"), "The PWA shell should cache identity and navigation assets");
 assert(source.includes("cloudSavePending"), "Cloud saves made during an active request should remain queued");
 assert(source.includes("scheduleSearchRender"), "Search input should debounce full-page rendering");
 assert(!styles.includes("backdrop-filter: blur(12px)"), "Mobile navigation should avoid expensive live backdrop blur");
+assert(styles.includes(".segmented-control.project-status-switch") && styles.includes("white-space: nowrap"), "Project status tabs should retain readable two-column labels");
 
 console.log("mobile UX render tests: passed");
