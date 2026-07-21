@@ -111,7 +111,7 @@ assert(ganttProjects.includes("project-gantt-actual") && ganttProjects.includes(
 assert(ganttProjects.includes("80%｜課綱完成・錄製課程"), "Gantt rows should explain what each milestone percentage means");
 assert(ganttProjects.includes("project-gantt-mobile-list") && ganttProjects.includes("project-gantt-mobile-card"), "Mobile Gantt view should use compact schedule cards");
 assert(ganttProjects.includes(`data-project-open="${project.id}"`), "Gantt projects should open their project detail directly");
-assert(ganttProjects.includes("data-gantt-tooltip=") && ganttProjects.includes("今日預計"), "Gantt bars should expose a complete hover summary");
+assert(ganttProjects.includes('class="project-gantt-row" data-gantt-tooltip=') && ganttProjects.includes("今日預計"), "The complete Gantt row should expose a hover summary");
 assert(harness.projectGanttSchedule(project).actual === 80, "Gantt scheduling should use the project milestone as actual progress");
 const overdueProject = { ...project, id: "project-overdue", start_date: "2000-01-01", target_date: "2000-02-01" };
 const futureProject = { ...project, id: "project-future", start_date: "2099-01-01", target_date: "2099-02-01" };
@@ -190,7 +190,7 @@ assert(manifest.includes("app-icon-192.png") && manifest.includes("app-icon-512.
 
 const worker = read("../service-worker.js");
 new Function(worker);
-assert(worker.includes('teacher-operations-v20'), "PWA cache should be refreshed for the Gantt usability upgrade");
+assert(worker.includes('teacher-operations-v21'), "PWA cache should be refreshed for the wider Gantt tooltip trigger");
 assert(worker.includes("icon-house.svg") && worker.includes("app-icon-512.png"), "The PWA shell should cache identity and navigation assets");
 assert(source.includes("cloudSavePending"), "Cloud saves made during an active request should remain queued");
 assert(source.includes("scheduleSearchRender"), "Search input should debounce full-page rendering");

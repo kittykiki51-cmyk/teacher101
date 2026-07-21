@@ -1051,7 +1051,8 @@ function showGanttTooltip(target) {
   }
   tooltip.textContent = content;
   tooltip.hidden = false;
-  const targetBox = target.getBoundingClientRect();
+  const anchor = target.matches(".project-gantt-row") ? target.querySelector(".project-gantt-bar") || target : target;
+  const targetBox = anchor.getBoundingClientRect();
   const tooltipBox = tooltip.getBoundingClientRect();
   const left = Math.max(10, Math.min(window.innerWidth - tooltipBox.width - 10, targetBox.left + targetBox.width / 2 - tooltipBox.width / 2));
   const above = targetBox.top - tooltipBox.height - 10;
@@ -1077,6 +1078,7 @@ function projectGantt(projects, emptyText) {
     const end = parseDate((projectFinished(project) ? project.completed_date : project.target_date) || project.target_date);
     const schedule = projectGanttSchedule(project);
     const milestone = projectMilestone(project);
+    const tooltip = escapeHTML(projectGanttTooltip(project, schedule, milestone));
     const overlaps = start && end && end >= range.start && start <= range.end;
     let bar = `<span class="project-gantt-outside">不在目前範圍</span>`;
     if (overlaps) {
@@ -1086,11 +1088,11 @@ function projectGantt(projects, emptyText) {
       const width = Math.max(1.2, Math.round((((visibleEnd - visibleStart) / 86400000) + 1) / range.totalDays * 10000) / 100);
       const deadlineVisible = end >= range.start && end <= range.end;
       const deadlineLabel = `${projectFinished(project) ? "完成日期" : "預計完成"}：${humanDate(end ? dateISO(end) : "")}｜${projectRemainingLabel(project)}`;
-      bar = `<button type="button" class="project-gantt-bar ${schedule.tone} ${projectFinished(project) ? "finished" : ""}" style="--bar-left:${left}%;--bar-width:${width}%;--actual-progress:${schedule.actual}%;--expected-progress:${schedule.expected}%" data-project-open="${escapeHTML(project.id)}" data-gantt-tooltip="${escapeHTML(projectGanttTooltip(project, schedule, milestone))}" aria-label="${escapeHTML(project.course || "未命名課程")}，實際進度 ${schedule.actual}%，${escapeHTML(milestone.label)}">
+      bar = `<button type="button" class="project-gantt-bar ${schedule.tone} ${projectFinished(project) ? "finished" : ""}" style="--bar-left:${left}%;--bar-width:${width}%;--actual-progress:${schedule.actual}%;--expected-progress:${schedule.expected}%" data-project-open="${escapeHTML(project.id)}" data-gantt-tooltip="${tooltip}" aria-label="${escapeHTML(project.course || "未命名課程")}，實際進度 ${schedule.actual}%，${escapeHTML(milestone.label)}">
         <span class="project-gantt-actual"></span><span class="project-gantt-expected" title="今日預計進度 ${schedule.expected}%"></span>${deadlineVisible ? `<span class="project-gantt-deadline" title="${escapeHTML(deadlineLabel)}"></span>` : ""}<b>${schedule.actual}%</b>
       </button>`;
     }
-    return `<div class="project-gantt-row">
+    return `<div class="project-gantt-row" data-gantt-tooltip="${tooltip}">
       <button type="button" class="project-gantt-info" data-project-open="${escapeHTML(project.id)}">
         <strong>${escapeHTML(project.course || "未命名課程")}</strong>
         <span>${escapeHTML(project.teacher || "未設定老師")}｜${humanDate(projectStartDate(project))}－${humanDate(end ? dateISO(end) : "")}</span>
@@ -1710,9 +1712,11 @@ function bindContentEvents() {
     state.projectGanttMonths = Number(button.dataset.ganttMonths) || 6;
     render();
   }));
-  document.querySelectorAll("[data-gantt-tooltip]").forEach((bar) => {
-    bar.addEventListener("mouseenter", () => showGanttTooltip(bar));
-    bar.addEventListener("mouseleave", hideGanttTooltip);
+  document.querySelectorAll(".project-gantt-row[data-gantt-tooltip]").forEach((row) => {
+    row.addEventListener("mouseenter", () => showGanttTooltip(row));
+    row.addEventListener("mouseleave", hideGanttTooltip);
+  });
+  document.querySelectorAll(".project-gantt-bar[data-gantt-tooltip]").forEach((bar) => {
     bar.addEventListener("focus", () => showGanttTooltip(bar));
     bar.addEventListener("blur", hideGanttTooltip);
   });
