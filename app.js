@@ -34,7 +34,7 @@ let state = {
   query: "",
   projectRoleFilter: "全部",
   projectModeFilter: "全部類型",
-  hideCompletedProjects: true,
+  projectStatusFilter: "active",
   projectView: "cards",
   projectTableSort: "target_date",
   projectTableSortDirection: "asc",
@@ -654,18 +654,26 @@ function metric(label, value, note) {
 function renderProjects() {
   const query = state.query.trim().toLowerCase();
   const currentMonth = monthKey(new Date());
-  const projects = state.workspace.projects.filter((project) => {
+  const filteredProjects = state.workspace.projects.filter((project) => {
     const haystack = `${project.teacher || ""} ${project.course || ""} ${(project.tags || []).join(" ")}`.toLowerCase();
     const mode = project.mode === "live" ? "直播" : "錄播";
     return (!query || haystack.includes(query))
       && (state.projectRoleFilter === "全部" || project.role === state.projectRoleFilter)
-      && (state.projectModeFilter === "全部類型" || mode === state.projectModeFilter)
-      && (!state.hideCompletedProjects || !projectFinished(project));
-  }).sort(state.projectView === "table"
+      && (state.projectModeFilter === "全部類型" || mode === state.projectModeFilter);
+  });
+  const activeCount = filteredProjects.filter((project) => !projectFinished(project)).length;
+  const completedCount = filteredProjects.length - activeCount;
+  const completionRate = filteredProjects.length ? Math.round((completedCount / filteredProjects.length) * 100) : 0;
+  const projects = filteredProjects
+    .filter((project) => state.projectStatusFilter === "completed" ? projectFinished(project) : !projectFinished(project))
+    .sort(state.projectView === "table"
     ? projectTableComparator
-    : (a, b) => projectSortRank(a, currentMonth) - projectSortRank(b, currentMonth)
+    : state.projectStatusFilter === "completed"
+      ? (a, b) => String(b.completed_date || b.target_date || "").localeCompare(String(a.completed_date || a.target_date || ""))
+      : (a, b) => projectSortRank(a, currentMonth) - projectSortRank(b, currentMonth)
       || String(a.target_month || "9999-99").localeCompare(String(b.target_month || "9999-99"))
       || String(a.target_date || "9999-12-31").localeCompare(String(b.target_date || "9999-12-31")));
+  const emptyText = state.projectStatusFilter === "completed" ? "目前沒有已完成的課程專案。" : "目前沒有進行中的課程專案。";
   return `
     <div class="desktop-page-title project-page-title">
       <div>
@@ -673,6 +681,13 @@ function renderProjects() {
         <p class="muted">依目標月份與角色管理正式、候補、觀察及下月前置課程。</p>
       </div>
       <button class="primary-button" data-new-project>新增課程專案</button>
+    </div>
+    <div class="project-status-bar">
+      <div class="segmented-control project-status-switch" aria-label="專案完成狀態">
+        <button type="button" class="${state.projectStatusFilter === "active" ? "active" : ""}" data-project-status="active" aria-pressed="${state.projectStatusFilter === "active"}">進行中 <span>${activeCount}</span></button>
+        <button type="button" class="${state.projectStatusFilter === "completed" ? "active" : ""}" data-project-status="completed" aria-pressed="${state.projectStatusFilter === "completed"}">已完成 <span>${completedCount}</span></button>
+      </div>
+      <p class="project-status-summary">全部 ${filteredProjects.length} 個｜完成率 ${completionRate}%</p>
     </div>
     <div class="project-filters">
       <input class="search-input" id="projectSearch" value="${escapeHTML(state.query)}" placeholder="搜尋老師或課程">
@@ -682,9 +697,6 @@ function renderProjects() {
       <select class="select" id="projectModeFilter" aria-label="類型篩選">
         ${["全部類型", "錄播", "直播"].map((value) => `<option ${state.projectModeFilter === value ? "selected" : ""}>${value}</option>`).join("")}
       </select>
-      <button class="ghost-button completed-project-toggle ${state.hideCompletedProjects ? "active" : ""}" data-hide-completed aria-pressed="${state.hideCompletedProjects}">
-        ${state.hideCompletedProjects ? "顯示已完成" : "隱藏已完成"}
-      </button>
     </div>
     <div class="project-view-toolbar">
       <p class="muted">共 ${projects.length} 個專案</p>
@@ -694,8 +706,8 @@ function renderProjects() {
       </div>
     </div>
     ${state.projectView === "table"
-      ? projectSummaryTable(projects, "沒有符合條件的課程專案。")
-      : `<div class="project-list-grid">${projectCards(projects, "沒有符合條件的課程專案。")}</div>`}
+      ? projectSummaryTable(projects, emptyText)
+      : `<div class="project-list-grid">${projectCards(projects, emptyText)}</div>`}
   `;
 }
 
@@ -760,7 +772,7 @@ function projectTableSortValue(project, key) {
   if (key === "start_date") return projectStartDate(project) || "9999-12-31";
   if (key === "progress") return projectMilestone(project).progress;
   if (key === "status") return projectRisk(project).label;
-  return project.target_date || "9999-12-31";
+  return (projectFinished(project) ? project.completed_date || project.target_date : project.target_date) || "9999-12-31";
 }
 
 function projectTableComparator(a, b) {
@@ -890,6 +902,9 @@ function renderProjectDetail() {
         <button class="ghost-button mobile-project-back" data-page="projects">返回專案</button>
         ${pill(finished ? "已完成｜此專案結束" : risk.label, finished ? "green" : risk.tone)}
         <div class="toolbar summary-buttons">
+          ${finished
+            ? `<button class="primary-button" data-project-reopen="${escapeHTML(project.id)}">重新開啟專案</button>`
+            : `<button class="primary-button" data-project-complete="${escapeHTML(project.id)}">完成專案</button>`}
           <button class="ghost-button" data-task-add="${escapeHTML(project.id)}">新增工作</button>
           <button class="ghost-button" data-project-edit="${escapeHTML(project.id)}">編輯專案</button>
           ${links["雲端資料夾"] ? `<button class="ghost-button" data-open-url="${escapeHTML(links["雲端資料夾"])}">開啟雲端</button>` : ""}
@@ -1392,11 +1407,11 @@ function bindContentEvents() {
   if (roleFilter) roleFilter.addEventListener("change", (event) => { state.projectRoleFilter = event.target.value; render(); });
   const modeFilter = $("#projectModeFilter");
   if (modeFilter) modeFilter.addEventListener("change", (event) => { state.projectModeFilter = event.target.value; render(); });
-  const hideCompleted = $("[data-hide-completed]");
-  if (hideCompleted) hideCompleted.addEventListener("click", () => {
-    state.hideCompletedProjects = !state.hideCompletedProjects;
+  document.querySelectorAll("[data-project-status]").forEach((button) => button.addEventListener("click", () => {
+    state.projectStatusFilter = button.dataset.projectStatus;
+    if (state.projectTableSort === "target_date") state.projectTableSortDirection = state.projectStatusFilter === "completed" ? "desc" : "asc";
     render();
-  });
+  }));
   document.querySelectorAll("[data-project-view]").forEach((button) => button.addEventListener("click", () => {
     state.projectView = button.dataset.projectView;
     render();
@@ -1439,6 +1454,8 @@ function bindContentEvents() {
   });
 
   document.querySelectorAll("[data-project-edit]").forEach((button) => button.addEventListener("click", () => openProjectDialog(projectById(button.dataset.projectEdit))));
+  document.querySelectorAll("[data-project-complete]").forEach((button) => button.addEventListener("click", () => completeProject(button.dataset.projectComplete)));
+  document.querySelectorAll("[data-project-reopen]").forEach((button) => button.addEventListener("click", () => reopenProject(button.dataset.projectReopen)));
 
   document.querySelectorAll("#content [data-page]").forEach((button) => {
     button.addEventListener("click", () => setPage(button.dataset.page));
@@ -2031,6 +2048,32 @@ function saveProjectFromForm(event) {
 
 function addHistory(text, projectId, type = "activity") {
   state.workspace.history.unshift({ id: uid("history"), project_id: projectId, time: new Date().toISOString().slice(0, 16), text, type });
+}
+
+function completeProject(projectId) {
+  const project = projectById(projectId);
+  if (!project || projectFinished(project)) return;
+  if (!confirm(`確定將「${project.course || "未命名專案"}」標記為整個專案已完成？`)) return;
+  project.status = "已完成";
+  project.completed_date = todayISO();
+  project.last_update = todayISO();
+  addHistory(`完成整個課程專案「${project.course || "未命名專案"}」`, project.id, "project");
+  saveWorkspace();
+  showToast("專案已完成，將從進行中總表隱藏");
+  render();
+}
+
+function reopenProject(projectId) {
+  const project = projectById(projectId);
+  if (!project || !projectFinished(project)) return;
+  project.status = "進行中";
+  project.completed_date = "";
+  if (["已完成", "已上架"].includes(project.current_stage)) project.current_stage = "課程上架";
+  project.last_update = todayISO();
+  addHistory(`重新開啟課程專案「${project.course || "未命名專案"}」`, project.id, "project");
+  saveWorkspace();
+  showToast("專案已重新移回進行中");
+  render();
 }
 
 function deleteProject(projectId) {

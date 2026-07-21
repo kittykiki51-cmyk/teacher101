@@ -12,7 +12,22 @@ const source = read("../app.js");
 const testableSource = source.replace(/\ninitializeApp\(\);\s*$/, "");
 const storage = { getItem: () => null, setItem: () => null, removeItem: () => null };
 const browserWindow = { location: { protocol: "file:" }, INITIAL_WORKSPACE: null };
-const harness = new Function("window", "localStorage", `${testableSource}\nreturn { state, todayISO, monthKey, renderDashboard, renderProjects, renderProjectDetail, renderSettings, renderCalendar, projectMilestone, taskList };`)(browserWindow, storage);
+const harness = new Function("window", "localStorage", "confirm", "crypto", `${testableSource}
+function runProjectActionForTest(action, id) {
+  const originalToast = showToast;
+  const originalRender = render;
+  const originalSave = saveWorkspace;
+  showToast = () => {};
+  render = () => {};
+  saveWorkspace = () => {};
+  try { action(id); } finally { showToast = originalToast; render = originalRender; saveWorkspace = originalSave; }
+}
+return {
+  state, todayISO, monthKey, renderDashboard, renderProjects, renderProjectDetail, renderSettings, renderCalendar,
+  projectMilestone, projectFinished, taskList,
+  completeProjectForTest: (id) => runProjectActionForTest(completeProject, id),
+  reopenProjectForTest: (id) => runProjectActionForTest(reopenProject, id),
+};`)(browserWindow, storage, () => true, { randomUUID: () => "12345678-1234-1234-1234-123456789abc" });
 
 const today = harness.todayISO();
 const currentMonth = harness.monthKey(new Date());
@@ -30,12 +45,21 @@ const project = {
   cooperation_status: "順利",
   links: {},
 };
+const completedProject = {
+  ...project,
+  id: "project-completed",
+  teacher: "Completed Teacher",
+  course: "Completed Course",
+  current_stage: "課程上架",
+  status: "已完成",
+  completed_date: today,
+};
 const generalTask = { id: "task-mobile", project_id: project.id, title: "Today task", date: today, time: "10:00", status: "未完成", task_type: "一般工作" };
 const phoneTask = { id: "phone-mobile", project_id: project.id, title: "Phone task", date: today, time: "11:00", status: "未完成", task_type: "電話聯繫", phone_status: "待聯繫" };
 
 harness.state.workspace = {
   settings: { monthly_goal: 2 },
-  projects: [project],
+  projects: [project, completedProject],
   tasks: [generalTask, phoneTask],
   checklists: [], progress_logs: [], project_messages: [], history: [], archives: [], deleted_ids: {},
 };
@@ -55,6 +79,14 @@ assert(phoneList.includes(`data-task-edit=\"${phoneTask.id}\"`), "Phone tasks sh
 
 const cardProjects = harness.renderProjects();
 assert(cardProjects.includes('data-project-view="cards"') && cardProjects.includes('data-project-view="table"'), "Project page should switch between card and summary views");
+assert(cardProjects.includes('data-project-status="active"') && cardProjects.includes('data-project-status="completed"'), "Project page should separate active and completed projects");
+assert(cardProjects.includes("Mobile Course") && !cardProjects.includes("Completed Course"), "Completed projects should stay hidden from the default active view");
+assert(harness.projectFinished(project) === false && harness.projectFinished(completedProject) === true, "Project visibility should depend on project status instead of task completion");
+harness.completeProjectForTest(project.id);
+assert(project.status === "已完成" && project.completed_date === today, "Complete project should set project-level status and completion date");
+assert(generalTask.status === "未完成", "Completing a project should not rewrite its individual work records");
+harness.reopenProjectForTest(project.id);
+assert(project.status === "進行中" && project.completed_date === "", "Reopening should return a project to the active view");
 assert(harness.projectMilestone(project).progress === 80, "Course recording should map to the 80 percent milestone");
 assert(harness.projectMilestone({ current_stage: "講師資料", status: "進行中" }).progress === 50, "Teacher preparation should map to the 50 percent milestone");
 assert(harness.projectMilestone({ current_stage: "課綱與合約", status: "進行中" }).progress === 60, "Syllabus discussion should map to the 60 percent milestone");
@@ -65,10 +97,16 @@ const summaryProjects = harness.renderProjects();
 assert(summaryProjects.includes("project-summary-table"), "Desktop summary view should render a project table");
 assert(summaryProjects.includes("project-mobile-summary-list"), "Mobile summary view should render a compact project list");
 assert(summaryProjects.includes("80%") && summaryProjects.includes("課綱完成・錄製課程"), "Summary view should pair milestone percentage with its label");
+harness.state.projectStatusFilter = "completed";
+const completedSummary = harness.renderProjects();
+assert(completedSummary.includes("Completed Course") && !completedSummary.includes("Mobile Course"), "Completed view should only display completed projects");
+assert(completedSummary.includes("100%"), "Completed projects should report 100 percent progress");
+harness.state.projectStatusFilter = "active";
 
 harness.state.projectMobileTab = "work";
 const workDetail = harness.renderProjectDetail();
 assert(workDetail.includes("project-mobile-tabs"), "Project details should provide mobile tabs");
+assert(workDetail.includes('data-project-complete="project-mobile"'), "Active project details should provide a complete-project action");
 assert(workDetail.includes('data-project-mobile-panel="work"'), "Project work panel should be available");
 assert(workDetail.includes('data-project-mobile-panel="checklist"'), "Project checklist panel should be available");
 assert(workDetail.includes('data-project-mobile-panel="message"'), "Project message panel should be available");
@@ -77,6 +115,10 @@ assert(workDetail.includes('data-project-mobile-panel="history"'), "Project hist
 harness.state.projectMobileTab = "message";
 const messageDetail = harness.renderProjectDetail();
 assert(messageDetail.includes('project-board-card project-mobile-panel active'), "Selected mobile project tab should activate its panel");
+harness.state.selectedProjectId = completedProject.id;
+const completedDetail = harness.renderProjectDetail();
+assert(completedDetail.includes('data-project-reopen="project-completed"'), "Completed project details should provide a reopen action");
+harness.state.selectedProjectId = project.id;
 
 const settings = harness.renderSettings();
 assert(settings.includes("mobile-account-panel"), "Mobile settings should expose sync and account actions");
@@ -126,7 +168,7 @@ const manifest = read("../manifest.json");
 assert(manifest.includes("app-icon-192.png") && manifest.includes("app-icon-512.png") && manifest.includes("maskable"), "The PWA manifest should publish installable app icons");
 
 const worker = read("../service-worker.js");
-assert(worker.includes('teacher-operations-v13'), "PWA cache should be refreshed for the performance release");
+assert(worker.includes('teacher-operations-v14'), "PWA cache should be refreshed for project completion tabs");
 assert(worker.includes("icon-house.svg") && worker.includes("app-icon-512.png"), "The PWA shell should cache identity and navigation assets");
 assert(source.includes("cloudSavePending"), "Cloud saves made during an active request should remain queued");
 assert(source.includes("scheduleSearchRender"), "Search input should debounce full-page rendering");
