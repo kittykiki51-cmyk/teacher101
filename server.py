@@ -50,6 +50,10 @@ app.config.update(
 LOGIN_WINDOW_SECONDS = 15 * 60
 LOGIN_ATTEMPT_LIMIT = 8
 MAX_TRACKED_LOGIN_CLIENTS = 2048
+WORKSPACE_LIST_FIELDS = (
+    "projects", "tasks", "checklists", "progress_logs",
+    "project_messages", "history", "archives",
+)
 
 login_attempts: dict[str, list[float]] = {}
 login_attempts_lock = threading.Lock()
@@ -242,6 +246,18 @@ def clear_failed_logins(client: str) -> None:
         login_attempts.pop(client, None)
 
 
+def workspace_payload_is_valid(workspace: Any) -> bool:
+    if not isinstance(workspace, dict):
+        return False
+    if not isinstance(workspace.get("settings"), dict) or not isinstance(workspace.get("deleted_ids"), dict):
+        return False
+    for field in WORKSPACE_LIST_FIELDS:
+        items = workspace.get(field)
+        if not isinstance(items, list) or any(not isinstance(item, dict) for item in items):
+            return False
+    return True
+
+
 @app.after_request
 def security_headers(response: Any) -> Any:
     response.headers["Content-Security-Policy"] = (
@@ -346,7 +362,7 @@ def put_workspace() -> Any:
     body = request.get_json(silent=True) or {}
     workspace = body.get("workspace")
     expected_revision = body.get("revision")
-    if not isinstance(workspace, dict) or not isinstance(workspace.get("projects", []), list) or not isinstance(workspace.get("tasks", []), list):
+    if not workspace_payload_is_valid(workspace) or not isinstance(expected_revision, int) or isinstance(expected_revision, bool):
         return jsonify({"error": "workspace 資料格式不正確"}), 400
     payload = json.dumps(workspace, ensure_ascii=False, separators=(",", ":"))
     now = datetime.now().isoformat(timespec="seconds")
