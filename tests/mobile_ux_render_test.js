@@ -81,6 +81,9 @@ assert(calendar.includes("mobile-date-strip"), "Mobile calendar should provide a
 assert(calendar.includes("data-mobile-month-toggle"), "Full month view should remain available on mobile");
 
 const styles = read("../styles.css");
+const dashboardPanelStart = styles.indexOf("\n.home-panel {", styles.indexOf(".home-body"));
+const dashboardPanelStyles = styles.slice(dashboardPanelStart, styles.indexOf("\n.today-work-panel {", dashboardPanelStart));
+assert(dashboardPanelStyles.includes("background: var(--surface)") && dashboardPanelStyles.includes("border: 1px solid var(--border)"), "Dashboard panels should retain their white framed surfaces");
 assert(styles.includes(".project-mobile-tabs"), "Mobile project tab styles should exist");
 assert(styles.includes("place-items: end stretch"), "Mobile dialogs should open as bottom sheets");
 assert(styles.includes("env(safe-area-inset-bottom)"), "Mobile controls should account for device safe areas");
@@ -107,7 +110,7 @@ const manifest = read("../manifest.json");
 assert(manifest.includes("app-icon-192.png") && manifest.includes("app-icon-512.png") && manifest.includes("maskable"), "The PWA manifest should publish installable app icons");
 
 const worker = read("../service-worker.js");
-assert(worker.includes('teacher-operations-v10'), "PWA cache should be refreshed for the layout refinement update");
+assert(worker.includes('teacher-operations-v11'), "PWA cache should be refreshed for the restored dashboard panels");
 assert(worker.includes("icon-house.svg") && worker.includes("app-icon-512.png"), "The PWA shell should cache identity and navigation assets");
 
 console.log("mobile UX render tests: passed");

@@ -490,8 +490,7 @@ body[data-page="projectDetail"] .content {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   grid-template-rows: auto auto;
   grid-template-areas: "today phone" "formal formal";
-  column-gap: var(--space-6);
-  row-gap: 0;
+  gap: var(--space-4);
   align-items: start;
 }
 
@@ -508,21 +507,19 @@ body[data-page="projectDetail"] .content {
 }
 
 .home-panel {
-  border: 0;
-  border-top: 1px solid var(--border);
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-  padding: var(--space-4) 0;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  padding: 15px 17px;
 }
 
 .today-work-panel {
-  border-top: 2px solid var(--primary);
+  border-top: 3px solid var(--primary);
 }
 
 .phone-panel {
-  border-left: 1px solid var(--border);
-  padding-left: var(--space-6);
+  padding-left: 17px;
 }
 
 .formal-panel .list {
