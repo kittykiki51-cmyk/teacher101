@@ -39,6 +39,7 @@ let state = {
   projectModeFilter: "全部類型",
   projectStatusFilter: "active",
   projectView: "cards",
+  projectGanttMonths: 6,
   projectTableSort: "target_date",
   projectTableSortDirection: "asc",
   calendarQuery: "",
@@ -821,11 +822,12 @@ function renderProjects() {
       <div class="segmented-control project-view-switch" aria-label="專案顯示方式">
         <button type="button" class="${state.projectView === "cards" ? "active" : ""}" data-project-view="cards" aria-pressed="${state.projectView === "cards"}">卡片</button>
         <button type="button" class="${state.projectView === "table" ? "active" : ""}" data-project-view="table" aria-pressed="${state.projectView === "table"}">總表</button>
+        <button type="button" class="${state.projectView === "gantt" ? "active" : ""}" data-project-view="gantt" aria-pressed="${state.projectView === "gantt"}">甘特</button>
       </div>
     </div>
-    ${state.projectView === "table"
-      ? projectSummaryTable(projects, emptyText)
-      : `<div class="project-list-grid">${projectCards(projects, emptyText)}</div>`}
+    ${state.projectView === "table" ? projectSummaryTable(projects, emptyText)
+      : state.projectView === "gantt" ? projectGantt(projects, emptyText)
+        : `<div class="project-list-grid">${projectCards(projects, emptyText)}</div>`}
   `;
 }
 
@@ -953,6 +955,107 @@ function projectSummaryTable(projects, emptyText) {
     </table>
     <div class="project-mobile-summary-list">${mobileRows}</div>
   </div>`;
+}
+
+function projectGanttRange(monthCount = 6) {
+  const today = parseDate(todayISO()) || new Date();
+  const monthsBeforeToday = monthCount >= 12 ? 2 : 1;
+  const start = new Date(today.getFullYear(), today.getMonth() - monthsBeforeToday, 1);
+  const end = new Date(start.getFullYear(), start.getMonth() + monthCount, 0);
+  const totalDays = Math.round((end - start) / 86400000) + 1;
+  const months = Array.from({ length: monthCount }, (_, index) => {
+    const monthStart = new Date(start.getFullYear(), start.getMonth() + index, 1);
+    const monthEnd = new Date(start.getFullYear(), start.getMonth() + index + 1, 0);
+    const left = Math.round(((monthStart - start) / 86400000) / totalDays * 10000) / 100;
+    const width = Math.round(((monthEnd - monthStart) / 86400000 + 1) / totalDays * 10000) / 100;
+    return { label: `${monthStart.getFullYear()}年${monthStart.getMonth() + 1}月`, left, width };
+  });
+  const todayPosition = Math.round(((today - start) / 86400000) / totalDays * 10000) / 100;
+  return { start, end, totalDays, months, todayPosition };
+}
+
+function projectGanttSchedule(project) {
+  const start = parseDate(projectStartDate(project));
+  const end = parseDate((projectFinished(project) ? project.completed_date : project.target_date) || project.target_date);
+  const actual = projectMilestone(project).progress;
+  if (!start || !end || end < start) return { expected: 0, actual, label: "日期待補", tone: "gray" };
+  const today = parseDate(todayISO()) || new Date();
+  const total = Math.max(1, Math.round((end - start) / 86400000));
+  const elapsed = Math.round((today - start) / 86400000);
+  const expected = Math.max(0, Math.min(100, Math.round(elapsed / total * 100)));
+  if (projectFinished(project)) return { expected: 100, actual: 100, label: "已完成", tone: "green" };
+  if (projectDeferred(project)) return { expected, actual, label: "暫緩", tone: "amber" };
+  if ((today > end && actual < 100) || expected - actual >= 15) return { expected, actual, label: "需追蹤", tone: "red" };
+  return { expected, actual, label: "進度正常", tone: "green" };
+}
+
+function projectRemainingLabel(project) {
+  if (projectFinished(project)) return `完成於 ${humanDate(project.completed_date || project.target_date)}`;
+  const end = parseDate(project.target_date);
+  const today = parseDate(todayISO());
+  if (!end || !today) return "尚未設定結束日期";
+  const days = Math.ceil((end - today) / 86400000);
+  if (days < 0) return `逾期 ${Math.abs(days)} 天`;
+  if (days === 0) return "今天到期";
+  return `剩餘 ${days} 天`;
+}
+
+function projectGantt(projects, emptyText) {
+  if (!projects.length) return `<div class="project-empty">${emptyState(emptyText, "新增課程專案", "data-new-project")}</div>`;
+  const range = projectGanttRange(state.projectGanttMonths);
+  const monthBands = range.months.map((month) => `<span style="--month-left:${month.left}%;--month-width:${month.width}%"></span>`).join("");
+  const monthLabels = range.months.map((month) => `<span style="--month-left:${month.left}%;--month-width:${month.width}%">${month.label}</span>`).join("");
+  const todayVisible = range.todayPosition >= 0 && range.todayPosition <= 100;
+  const todayLine = todayVisible ? `<span class="project-gantt-today" style="--today-position:${range.todayPosition}%"><b>今天</b></span>` : "";
+  const rows = projects.map((project) => {
+    const start = parseDate(projectStartDate(project));
+    const end = parseDate((projectFinished(project) ? project.completed_date : project.target_date) || project.target_date);
+    const schedule = projectGanttSchedule(project);
+    const overlaps = start && end && end >= range.start && start <= range.end;
+    let bar = `<span class="project-gantt-outside">不在目前範圍</span>`;
+    if (overlaps) {
+      const visibleStart = start < range.start ? range.start : start;
+      const visibleEnd = end > range.end ? range.end : end;
+      const left = Math.max(0, Math.round(((visibleStart - range.start) / 86400000) / range.totalDays * 10000) / 100);
+      const width = Math.max(1.2, Math.round((((visibleEnd - visibleStart) / 86400000) + 1) / range.totalDays * 10000) / 100);
+      bar = `<button type="button" class="project-gantt-bar ${schedule.tone}" style="--bar-left:${left}%;--bar-width:${width}%;--actual-progress:${schedule.actual}%;--expected-progress:${schedule.expected}%" data-project-open="${escapeHTML(project.id)}" aria-label="${escapeHTML(project.course || "未命名課程")}，實際進度 ${schedule.actual}%">
+        <span class="project-gantt-actual"></span><span class="project-gantt-expected" title="今日預計進度 ${schedule.expected}%"></span><b>${schedule.actual}%</b>
+      </button>`;
+    }
+    return `<div class="project-gantt-row">
+      <button type="button" class="project-gantt-info" data-project-open="${escapeHTML(project.id)}">
+        <strong>${escapeHTML(project.course || "未命名課程")}</strong>
+        <span>${escapeHTML(project.teacher || "未設定老師")}｜${humanDate(projectStartDate(project))}－${humanDate(end ? dateISO(end) : "")}</span>
+        <small class="${schedule.tone}-text">${schedule.label}｜${schedule.actual}%</small>
+      </button>
+      <div class="project-gantt-track">${monthBands}${todayLine}${bar}</div>
+    </div>`;
+  }).join("");
+  const mobileRows = projects.map((project) => {
+    const schedule = projectGanttSchedule(project);
+    const milestone = projectMilestone(project);
+    return `<button type="button" class="project-gantt-mobile-card" data-project-open="${escapeHTML(project.id)}">
+      <span class="project-gantt-mobile-head"><strong>${escapeHTML(project.course || "未命名課程")}</strong>${pill(schedule.label, schedule.tone)}</span>
+      <span class="project-gantt-mobile-meta">${escapeHTML(project.teacher || "未設定老師")}｜${humanDate(projectStartDate(project))}－${humanDate(project.completed_date || project.target_date)}</span>
+      <span class="project-gantt-mobile-progress"><i style="--actual-progress:${schedule.actual}%"></i><b>${schedule.actual}%</b></span>
+      <span class="project-gantt-mobile-foot"><small>${escapeHTML(milestone.label)}</small><small class="${schedule.tone}-text">${projectRemainingLabel(project)}</small></span>
+    </button>`;
+  }).join("");
+  return `<section class="project-gantt-view">
+    <div class="project-gantt-toolbar">
+      <div class="project-gantt-legend"><span class="planned">計畫期間</span><span class="actual">實際進度</span><span class="expected">今日預計位置</span></div>
+      <div class="segmented-control project-gantt-range" aria-label="甘特圖時間範圍">
+        ${[3, 6, 12].map((months) => `<button type="button" class="${state.projectGanttMonths === months ? "active" : ""}" data-gantt-months="${months}">${months === 12 ? "全年" : `${months}個月`}</button>`).join("")}
+      </div>
+    </div>
+    <div class="project-gantt-scroll">
+      <div class="project-gantt-grid">
+        <div class="project-gantt-header"><div class="project-gantt-info project-gantt-info-header">專案與執行進度</div><div class="project-gantt-months">${monthLabels}${todayLine}</div></div>
+        ${rows}
+      </div>
+    </div>
+    <div class="project-gantt-mobile-list">${mobileRows}</div>
+  </section>`;
 }
 
 function projectCards(projects, emptyText) {
@@ -1532,6 +1635,10 @@ function bindContentEvents() {
   }));
   document.querySelectorAll("[data-project-view]").forEach((button) => button.addEventListener("click", () => {
     state.projectView = button.dataset.projectView;
+    render();
+  }));
+  document.querySelectorAll("[data-gantt-months]").forEach((button) => button.addEventListener("click", () => {
+    state.projectGanttMonths = Number(button.dataset.ganttMonths) || 6;
     render();
   }));
   document.querySelectorAll("[data-project-sort]").forEach((button) => button.addEventListener("click", () => {

@@ -24,7 +24,7 @@ function runProjectActionForTest(action, id) {
 }
 return {
   state, todayISO, monthKey, renderDashboard, renderProjects, renderProjectDetail, renderSettings, renderCalendar,
-  projectMilestone, projectFinished, taskList,
+  projectMilestone, projectFinished, projectGanttSchedule, taskList,
   completeProjectForTest: (id) => runProjectActionForTest(completeProject, id),
   reopenProjectForTest: (id) => runProjectActionForTest(reopenProject, id),
 };`)(browserWindow, storage, () => true, { randomUUID: () => "12345678-1234-1234-1234-123456789abc" });
@@ -78,7 +78,7 @@ const phoneList = harness.taskList([phoneTask], "", true);
 assert(phoneList.includes(`data-task-edit=\"${phoneTask.id}\"`), "Phone tasks should remain editable");
 
 const cardProjects = harness.renderProjects();
-assert(cardProjects.includes('data-project-view="cards"') && cardProjects.includes('data-project-view="table"'), "Project page should switch between card and summary views");
+assert(cardProjects.includes('data-project-view="cards"') && cardProjects.includes('data-project-view="table"') && cardProjects.includes('data-project-view="gantt"'), "Project page should switch between card, summary, and Gantt views");
 assert(cardProjects.includes('data-project-status="active"') && cardProjects.includes('data-project-status="completed"'), "Project page should separate active and completed projects");
 assert(cardProjects.includes("Mobile Course") && !cardProjects.includes("Completed Course"), "Completed projects should stay hidden from the default active view");
 assert(harness.projectFinished(project) === false && harness.projectFinished(completedProject) === true, "Project visibility should depend on project status instead of task completion");
@@ -102,6 +102,15 @@ const completedSummary = harness.renderProjects();
 assert(completedSummary.includes("Completed Course") && !completedSummary.includes("Mobile Course"), "Completed view should only display completed projects");
 assert(completedSummary.includes("100%"), "Completed projects should report 100 percent progress");
 harness.state.projectStatusFilter = "active";
+harness.state.projectView = "gantt";
+const ganttProjects = harness.renderProjects();
+assert(ganttProjects.includes("project-gantt-grid") && ganttProjects.includes("project-gantt-today"), "Desktop Gantt view should render a dated timeline and today marker");
+assert(ganttProjects.includes('data-gantt-months="3"') && ganttProjects.includes('data-gantt-months="6"') && ganttProjects.includes('data-gantt-months="12"'), "Gantt view should provide three, six, and twelve month ranges");
+assert(ganttProjects.includes("project-gantt-actual") && ganttProjects.includes("project-gantt-expected"), "Gantt bars should compare actual and expected progress");
+assert(ganttProjects.includes("project-gantt-mobile-list") && ganttProjects.includes("project-gantt-mobile-card"), "Mobile Gantt view should use compact schedule cards");
+assert(ganttProjects.includes(`data-project-open="${project.id}"`), "Gantt projects should open their project detail directly");
+assert(harness.projectGanttSchedule(project).actual === 80, "Gantt scheduling should use the project milestone as actual progress");
+harness.state.projectView = "cards";
 
 harness.state.projectMobileTab = "work";
 const workDetail = harness.renderProjectDetail();
@@ -157,6 +166,8 @@ assert(styles.includes("button:active:not(:disabled)"), "Buttons should provide 
 assert(styles.includes("--content-width: 1280px") && styles.includes('body[data-page="calendar"] .content'), "Standard pages should use a focused width while calendars remain wide");
 assert(styles.includes(".item-card.completed") && styles.includes("opacity: 0.78"), "Completed work should use reduced visual weight");
 assert(styles.includes(".project-summary-table") && styles.includes(".project-mobile-summary-list"), "Project summary should provide dedicated desktop and mobile layouts");
+assert(styles.includes(".project-gantt-info") && styles.includes("position: sticky"), "Gantt project labels should remain fixed while scrolling horizontally");
+assert(styles.includes(".project-gantt-mobile-card") && styles.includes(".project-gantt-today"), "Gantt view should provide mobile cards and a desktop today marker");
 assert(styles.includes(".bottom-nav .active") && styles.includes("background: transparent"), "Mobile navigation should use a single active-state signal");
 assert(source.includes("updateSyncIndicator") && source.includes("indicator.dataset.syncTone = tone"), "Sync feedback should use stable visual states");
 assert(source.includes('showToast("已標記完成", () =>'), "Completing work should provide a short undo opportunity");
@@ -170,7 +181,7 @@ assert(manifest.includes("app-icon-192.png") && manifest.includes("app-icon-512.
 
 const worker = read("../service-worker.js");
 new Function(worker);
-assert(worker.includes('teacher-operations-v16'), "PWA cache should be refreshed for the final data-integrity fixes");
+assert(worker.includes('teacher-operations-v17'), "PWA cache should be refreshed for the Gantt timeline upgrade");
 assert(worker.includes("icon-house.svg") && worker.includes("app-icon-512.png"), "The PWA shell should cache identity and navigation assets");
 assert(source.includes("cloudSavePending"), "Cloud saves made during an active request should remain queued");
 assert(source.includes("scheduleSearchRender"), "Search input should debounce full-page rendering");
