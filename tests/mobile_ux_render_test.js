@@ -25,6 +25,7 @@ function runProjectActionForTest(action, id) {
 return {
   state, todayISO, monthKey, renderDashboard, renderProjects, renderProjectDetail, renderSettings, renderCalendar,
   projectMilestone, projectFinished, projectGanttSchedule, projectGanttPriority, projectGanttTooltip, taskList,
+  projectCompletionSummary, archiveYearSelection, notificationSettingsState,
   completeProjectForTest: (id) => runProjectActionForTest(completeProject, id),
   reopenProjectForTest: (id) => runProjectActionForTest(reopenProject, id),
 };`)(browserWindow, storage, () => true, { randomUUID: () => "12345678-1234-1234-1234-123456789abc" });
@@ -61,7 +62,8 @@ harness.state.workspace = {
   settings: { monthly_goal: 2 },
   projects: [project, completedProject],
   tasks: [generalTask, phoneTask],
-  checklists: [], progress_logs: [], project_messages: [], history: [], archives: [], deleted_ids: {},
+  checklists: [{ id: "group-mobile", project_id: project.id, name: "Launch", items: [{ id: "check-mobile", title: "Final review", done: false }] }],
+  progress_logs: [], project_messages: [], history: [], archives: [], deleted_ids: {},
 };
 harness.state.selectedProjectId = project.id;
 
@@ -92,6 +94,8 @@ assert(harness.projectMilestone({ current_stage: "講師資料", status: "進行
 assert(harness.projectMilestone({ current_stage: "課綱與合約", status: "進行中" }).progress === 60, "Syllabus discussion should map to the 60 percent milestone");
 assert(harness.projectMilestone({ current_stage: "影片後製", status: "進行中" }).progress === 90, "Completed recording or post-production should map to the 90 percent milestone");
 assert(harness.projectMilestone({ current_stage: "已上架", status: "已上架" }).progress === 100, "Published projects should map to the 100 percent milestone");
+const completionSummary = harness.projectCompletionSummary(project.id);
+assert(completionSummary.workTasks.length === 1 && completionSummary.phoneTasks.length === 1 && completionSummary.checklistItems.length === 1, "Project completion should warn about pending work, calls, and checklist items separately");
 harness.state.projectView = "table";
 const summaryProjects = harness.renderProjects();
 assert(summaryProjects.includes("project-summary-table"), "Desktop summary view should render a project table");
@@ -141,6 +145,11 @@ harness.state.selectedProjectId = project.id;
 
 const settings = harness.renderSettings();
 assert(settings.includes("mobile-account-panel"), "Mobile settings should expose sync and account actions");
+assert(settings.includes("瀏覽器權限") && settings.includes("推播訂閱") && settings.includes("最近測試"), "Settings should explain notification reliability state");
+assert(settings.includes("data-refresh-notifications") && settings.includes("data-test-notification"), "Notification settings should support rechecking and testing this device");
+assert(settings.includes("data-export-year") && settings.includes("data-archive-year"), "Annual data should support separate export and archive actions");
+const annualSelection = harness.archiveYearSelection(Number(today.slice(0, 4)));
+assert(annualSelection.completedProjectIds.has(completedProject.id), "Annual export should include completed projects from the selected year");
 assert(source.includes('name="task_type"'), "Task forms should preserve phone task type");
 assert(source.includes("window.visualViewport"), "Mobile dialogs should follow the visible viewport when the keyboard opens");
 assert(source.includes('type="month" name="target_month"'), "Project month should use the device month picker");
@@ -192,7 +201,7 @@ assert(manifest.includes("app-icon-192.png") && manifest.includes("app-icon-512.
 
 const worker = read("../service-worker.js");
 new Function(worker);
-assert(worker.includes('teacher-operations-v22'), "PWA cache should be refreshed for the simplified Gantt tooltip");
+assert(worker.includes('teacher-operations-v23'), "PWA cache should be refreshed for completion, archive, and notification improvements");
 assert(worker.includes("icon-house.svg") && worker.includes("app-icon-512.png"), "The PWA shell should cache identity and navigation assets");
 assert(source.includes("cloudSavePending"), "Cloud saves made during an active request should remain queued");
 assert(source.includes("scheduleSearchRender"), "Search input should debounce full-page rendering");

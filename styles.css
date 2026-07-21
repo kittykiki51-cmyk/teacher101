@@ -2015,13 +2015,58 @@ button:disabled {
 
 .archive-controls {
   display: grid;
-  grid-template-columns: minmax(100px, 150px) auto;
+  grid-template-columns: minmax(100px, 150px) minmax(0, 1fr);
   gap: 8px;
   margin-top: 12px;
 }
 
 .archive-controls .search-input {
   width: 100%;
+}
+
+.archive-controls > .toolbar {
+  justify-content: flex-start;
+}
+
+.notification-status-list {
+  margin-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.notification-status-list > div {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.notification-status-list span {
+  color: var(--muted);
+}
+
+.notification-status-list strong {
+  max-width: 70%;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.notification-status-list .success {
+  color: var(--green);
+}
+
+.notification-status-list .pending {
+  color: var(--amber);
+}
+
+.notification-status-list .danger {
+  color: var(--red);
+}
+
+.notification-actions {
+  margin-top: 12px;
 }
 
 .calendar-grid {
@@ -3674,6 +3719,21 @@ button.day-cell:hover {
 
   .archive-controls {
     grid-template-columns: 88px minmax(0, 1fr);
+  }
+
+  .archive-controls > .toolbar {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .archive-controls > .toolbar button,
+  .notification-actions button {
+    width: 100%;
+  }
+
+  .notification-status-list > div {
+    min-height: 34px;
+    font-size: 11px;
   }
 
   .goal-setting-row .primary-button {

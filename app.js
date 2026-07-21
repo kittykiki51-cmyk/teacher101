@@ -2,6 +2,8 @@ const STORAGE_KEY = "teacher_operations_web_workspace";
 const OFFLINE_CACHE_KEY = "teacher_operations_cloud_offline_cache";
 const OFFLINE_BASE_KEY = "teacher_operations_cloud_sync_base";
 const OFFLINE_DIRTY_KEY = "teacher_operations_cloud_pending_changes";
+const PUSH_STATUS_KEY = "teacher_operations_push_status";
+const NOTIFICATION_TEST_KEY = "teacher_operations_notification_test";
 const CLOUD_MODE = window.location?.protocol !== "file:";
 
 const STATUS_COMPLETED = "已完成";
@@ -110,6 +112,8 @@ async function clearBrowserPrivateData() {
   localStorage.removeItem(OFFLINE_BASE_KEY);
   localStorage.removeItem(OFFLINE_DIRTY_KEY);
   localStorage.removeItem(STORAGE_KEY);
+  localStorage.removeItem(PUSH_STATUS_KEY);
+  localStorage.removeItem(NOTIFICATION_TEST_KEY);
   try {
     if ("caches" in window) {
       const keys = await caches.keys();
@@ -1551,16 +1555,41 @@ function renderPhone() {
   `;
 }
 
+function readLocalRecord(key) {
+  try {
+    const value = JSON.parse(localStorage.getItem(key) || "null");
+    return value && typeof value === "object" ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function shortDateTime(value) {
+  const text = String(value || "");
+  return text ? text.slice(0, 16).replace("T", " ") : "";
+}
+
+function notificationSettingsState() {
+  const permission = "Notification" in window ? window.Notification.permission : "unsupported";
+  const push = readLocalRecord(PUSH_STATUS_KEY);
+  const test = readLocalRecord(NOTIFICATION_TEST_KEY);
+  const permissionLabel = !CLOUD_MODE ? "需使用 HTTPS 雲端版"
+    : permission === "unsupported" ? "瀏覽器不支援"
+      : permission === "granted" ? "已允許"
+        : permission === "denied" ? "已封鎖" : "尚未啟用";
+  const permissionTone = permission === "granted" ? "success" : permission === "denied" || permission === "unsupported" ? "danger" : "pending";
+  const pushLabel = permission !== "granted" ? "等待通知權限"
+    : push?.subscribed ? `已訂閱${push.checked_at ? `・${shortDateTime(push.checked_at)}` : ""}`
+      : push ? `未訂閱・${shortDateTime(push.checked_at)}` : "尚未檢查";
+  const pushTone = push?.subscribed && permission === "granted" ? "success" : push ? "danger" : "pending";
+  const testLabel = !test ? "尚未測試"
+    : `${test.success ? "成功" : "失敗"}・${shortDateTime(test.checked_at)}${!test.success && test.message ? `・${test.message}` : ""}`;
+  return { permission, permissionLabel, permissionTone, pushLabel, pushTone, testLabel, testTone: test?.success ? "success" : test ? "danger" : "pending" };
+}
+
 function renderSettings() {
   const data = state.workspace;
-  const notificationPermission = "Notification" in window ? Notification.permission : "unsupported";
-  const notificationState = !CLOUD_MODE
-    ? "部署到 HTTPS 雲端後即可啟用"
-    : notificationPermission === "unsupported"
-      ? "此瀏覽器不支援通知"
-      : notificationPermission === "granted"
-        ? "這台裝置已允許通知"
-        : notificationPermission === "denied" ? "通知已被瀏覽器封鎖" : "尚未啟用";
+  const notifications = notificationSettingsState();
   return `
     <section class="card">
       <div class="card-header">
@@ -1583,10 +1612,16 @@ function renderSettings() {
         </form>
         <div class="import-panel notification-panel">
           <h4>Chrome 到時提醒</h4>
-          <p class="muted">${notificationState}</p>
-          <div class="toolbar" style="margin-top:12px">
-            <button class="primary-button" data-notifications ${!CLOUD_MODE || notificationPermission === "unsupported" || notificationPermission === "denied" ? "disabled" : ""}>啟用這台裝置的通知</button>
-            <button class="ghost-button" data-test-notification ${notificationPermission === "granted" ? "" : "disabled"}>測試通知</button>
+          <p class="muted">確認這台裝置是否能收到排程提醒。</p>
+          <div class="notification-status-list">
+            <div><span>瀏覽器權限</span><strong class="${notifications.permissionTone}">${escapeHTML(notifications.permissionLabel)}</strong></div>
+            <div><span>推播訂閱</span><strong class="${notifications.pushTone}">${escapeHTML(notifications.pushLabel)}</strong></div>
+            <div><span>最近測試</span><strong class="${notifications.testTone}">${escapeHTML(notifications.testLabel)}</strong></div>
+          </div>
+          <div class="toolbar notification-actions">
+            <button class="primary-button" data-notifications ${!CLOUD_MODE || notifications.permission === "unsupported" || notifications.permission === "denied" ? "disabled" : ""}>${notifications.permission === "granted" ? "確認啟用通知" : "啟用這台裝置的通知"}</button>
+            <button class="ghost-button" data-test-notification ${notifications.permission === "granted" ? "" : "disabled"}>測試通知</button>
+            <button class="ghost-button" data-refresh-notifications ${!CLOUD_MODE || notifications.permission === "unsupported" ? "disabled" : ""}>重新檢查</button>
           </div>
         </div>
         <div class="import-panel">
@@ -1600,10 +1635,10 @@ function renderSettings() {
         </div>
         <div class="import-panel archive-panel">
           <h4>年度備份與封存</h4>
-          <p class="muted">先下載完整 JSON，再把指定年度已完成資料移至封存區；可隨時下載或還原。</p>
+          <p class="muted">可只匯出年度資料；封存會先下載完整備份，再把已完成資料移至封存區。</p>
           <div class="archive-controls">
             <input class="search-input" id="archiveYear" type="number" min="2000" max="2100" value="${new Date().getFullYear() - 1}" aria-label="封存年度">
-            <button class="danger-button" data-archive-year>備份並封存</button>
+            <div class="toolbar"><button class="ghost-button" data-export-year>匯出年度資料</button><button class="danger-button" data-archive-year>封存已完成資料</button></div>
           </div>
           <div class="archive-list">${(data.archives || []).slice().sort((a, b) => Number(b.year) - Number(a.year)).map((archive) => `<div class="archive-row"><div><strong>${escapeHTML(archive.year)} 年封存</strong><p class="muted">${archive.projects?.length || 0} 個專案・${archive.tasks?.length || 0} 件工作・${String(archive.created_at || "").slice(0, 10)}</p></div><div class="toolbar"><button class="small-button" data-archive-download="${escapeHTML(archive.id)}">下載</button><button class="ghost-button" data-archive-restore="${escapeHTML(archive.id)}">還原</button><button class="danger-button" data-archive-delete="${escapeHTML(archive.id)}">刪除</button></div></div>`).join("") || `<p class="muted archive-empty">目前沒有封存資料。</p>`}</div>
         </div>
@@ -1791,6 +1826,7 @@ function bindContentEvents() {
   document.querySelectorAll("[data-template-save]").forEach((button) => button.addEventListener("click", saveChecklistTemplate));
   document.querySelectorAll("[data-notifications]").forEach((button) => button.addEventListener("click", enableNotifications));
   document.querySelectorAll("[data-test-notification]").forEach((button) => button.addEventListener("click", testNotification));
+  document.querySelectorAll("[data-refresh-notifications]").forEach((button) => button.addEventListener("click", refreshNotificationStatus));
   document.querySelectorAll("[data-mobile-refresh]").forEach((button) => button.addEventListener("click", refreshWorkspace));
   document.querySelectorAll("[data-mobile-logout]").forEach((button) => button.addEventListener("click", logoutCloud));
 
@@ -1941,6 +1977,7 @@ function bindContentEvents() {
   document.querySelectorAll("[data-import]").forEach((button) => button.addEventListener("click", openImporter));
   document.querySelectorAll("[data-export]").forEach((button) => button.addEventListener("click", exportWorkspace));
   document.querySelectorAll("[data-export-csv]").forEach((button) => button.addEventListener("click", exportTasksCSV));
+  document.querySelectorAll("[data-export-year]").forEach((button) => button.addEventListener("click", exportYearData));
   document.querySelectorAll("[data-archive-year]").forEach((button) => button.addEventListener("click", archiveYear));
   document.querySelectorAll("[data-archive-download]").forEach((button) => button.addEventListener("click", () => downloadArchive(button.dataset.archiveDownload)));
   document.querySelectorAll("[data-archive-restore]").forEach((button) => button.addEventListener("click", () => restoreArchive(button.dataset.archiveRestore)));
@@ -1991,12 +2028,16 @@ function exportTasksCSV() {
   showToast("已匯出工作 CSV");
 }
 
-function archiveYear() {
+function selectedArchiveYear() {
   const year = Number($("#archiveYear")?.value);
   if (!Number.isInteger(year) || year < 2000 || year > 2100) {
     showToast("請輸入正確的封存年度");
-    return;
+    return null;
   }
+  return year;
+}
+
+function archiveYearSelection(year) {
   const yearPrefix = `${year}-`;
   const completedTaskIds = new Set(state.workspace.tasks
     .filter((task) => task.status === STATUS_COMPLETED && String(task.completed_at || task.date || "").startsWith(yearPrefix))
@@ -2004,15 +2045,11 @@ function archiveYear() {
   const completedProjectIds = new Set(state.workspace.projects
     .filter((project) => projectFinished(project) && String(project.completed_date || project.target_date || project.target_month || "").startsWith(yearPrefix))
     .map((project) => project.id));
-  if (!completedTaskIds.size && !completedProjectIds.size) {
-    showToast(`${year} 年沒有可封存的已完成資料`);
-    return;
-  }
-  if (!confirm(`將先下載完整備份，再移除 ${year} 年已完成工作 ${completedTaskIds.size} 件、已完成專案 ${completedProjectIds.size} 件。確定繼續？`)) return;
-  exportWorkspace();
   const archivedTaskIds = new Set(state.workspace.tasks.filter((task) => completedTaskIds.has(task.id) || completedProjectIds.has(task.project_id)).map((task) => task.id));
-  const archive = {
-    id: uid("archive"), year, created_at: new Date().toISOString(),
+  return {
+    completedTaskIds,
+    completedProjectIds,
+    archivedTaskIds,
     projects: state.workspace.projects.filter((project) => completedProjectIds.has(project.id)),
     tasks: state.workspace.tasks.filter((task) => archivedTaskIds.has(task.id)),
     checklists: state.workspace.checklists.filter((group) => completedProjectIds.has(group.project_id)),
@@ -2020,14 +2057,60 @@ function archiveYear() {
     project_messages: state.workspace.project_messages.filter((item) => completedProjectIds.has(item.project_id)),
     history: state.workspace.history.filter((item) => completedProjectIds.has(item.project_id)),
   };
+}
+
+function buildYearArchive(year, selection) {
+  return {
+    id: uid("archive"), year, created_at: new Date().toISOString(),
+    projects: selection.projects,
+    tasks: selection.tasks,
+    checklists: selection.checklists,
+    progress_logs: selection.progress_logs,
+    project_messages: selection.project_messages,
+    history: selection.history,
+  };
+}
+
+function downloadJson(value, filename) {
+  const url = URL.createObjectURL(new Blob([JSON.stringify(value, null, 2)], { type: "application/json" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function exportYearData() {
+  const year = selectedArchiveYear();
+  if (year === null) return;
+  const selection = archiveYearSelection(year);
+  if (!selection.completedTaskIds.size && !selection.completedProjectIds.size) {
+    showToast(`${year} 年沒有可封存的已完成資料`);
+    return;
+  }
+  downloadJson(buildYearArchive(year, selection), `老師專案年度資料_${year}.json`);
+  showToast(`已匯出 ${year} 年資料：${selection.completedProjectIds.size} 個專案、${selection.archivedTaskIds.size} 件工作`);
+}
+
+function archiveYear() {
+  const year = selectedArchiveYear();
+  if (year === null) return;
+  const selection = archiveYearSelection(year);
+  if (!selection.completedTaskIds.size && !selection.completedProjectIds.size) {
+    showToast(`${year} 年沒有可封存的已完成資料`);
+    return;
+  }
+  if (!confirm(`將先下載完整備份，再封存 ${year} 年已完成工作 ${selection.completedTaskIds.size} 件、已完成專案 ${selection.completedProjectIds.size} 件。封存後會從日常畫面隱藏，但仍可還原。確定繼續？`)) return;
+  exportWorkspace();
+  const archive = buildYearArchive(year, selection);
   state.workspace.archives.push(archive);
-  [...completedProjectIds, ...archivedTaskIds, ...archive.checklists.map((item) => item.id), ...archive.progress_logs.map((item) => item.id), ...archive.project_messages.map((item) => item.id), ...archive.history.map((item) => item.id)].forEach(markDeleted);
-  state.workspace.tasks = state.workspace.tasks.filter((task) => !completedTaskIds.has(task.id) && !completedProjectIds.has(task.project_id));
-  state.workspace.projects = state.workspace.projects.filter((project) => !completedProjectIds.has(project.id));
-  state.workspace.checklists = state.workspace.checklists.filter((group) => !completedProjectIds.has(group.project_id));
-  state.workspace.progress_logs = state.workspace.progress_logs.filter((item) => !completedProjectIds.has(item.project_id));
-  state.workspace.project_messages = state.workspace.project_messages.filter((item) => !completedProjectIds.has(item.project_id));
-  state.workspace.history = state.workspace.history.filter((item) => !completedProjectIds.has(item.project_id));
+  [...selection.completedProjectIds, ...selection.archivedTaskIds, ...archive.checklists.map((item) => item.id), ...archive.progress_logs.map((item) => item.id), ...archive.project_messages.map((item) => item.id), ...archive.history.map((item) => item.id)].forEach(markDeleted);
+  state.workspace.tasks = state.workspace.tasks.filter((task) => !selection.archivedTaskIds.has(task.id));
+  state.workspace.projects = state.workspace.projects.filter((project) => !selection.completedProjectIds.has(project.id));
+  state.workspace.checklists = state.workspace.checklists.filter((group) => !selection.completedProjectIds.has(group.project_id));
+  state.workspace.progress_logs = state.workspace.progress_logs.filter((item) => !selection.completedProjectIds.has(item.project_id));
+  state.workspace.project_messages = state.workspace.project_messages.filter((item) => !selection.completedProjectIds.has(item.project_id));
+  state.workspace.history = state.workspace.history.filter((item) => !selection.completedProjectIds.has(item.project_id));
   saveWorkspace();
   showToast(`${year} 年已完成資料已封存`);
   render();
@@ -2036,8 +2119,7 @@ function archiveYear() {
 function downloadArchive(archiveId) {
   const archive = state.workspace.archives.find((item) => item.id === archiveId);
   if (!archive) return;
-  const url = URL.createObjectURL(new Blob([JSON.stringify(archive, null, 2)], { type: "application/json" }));
-  const link = document.createElement("a"); link.href = url; link.download = `老師專案封存_${archive.year}.json`; link.click(); URL.revokeObjectURL(url);
+  downloadJson(archive, `老師專案封存_${archive.year}.json`);
   showToast("封存資料已下載");
 }
 
@@ -2368,10 +2450,35 @@ function addHistory(text, projectId, type = "activity") {
   state.workspace.history.unshift({ id: uid("history"), project_id: projectId, time: new Date().toISOString().slice(0, 16), text, type });
 }
 
+function projectCompletionSummary(projectId) {
+  const pendingTasks = tasksForProject(projectId).filter((task) => task.status !== STATUS_COMPLETED);
+  const phoneTasks = pendingTasks.filter((task) => task.task_type === TASK_TYPE_PHONE);
+  const workTasks = pendingTasks.filter((task) => task.task_type !== TASK_TYPE_PHONE);
+  const checklistItems = state.workspace.checklists
+    .filter((group) => group.project_id === projectId)
+    .flatMap((group) => (group.items || []).filter((item) => !item.done).map((item) => ({ ...item, group_name: group.name || "檢查清單" })));
+  return { workTasks, phoneTasks, checklistItems, total: workTasks.length + phoneTasks.length + checklistItems.length };
+}
+
+function completionIssueLine(label, items) {
+  if (!items.length) return "";
+  const names = items.slice(0, 3).map((item) => item.title || "未命名").join("、");
+  return `・${label} ${items.length} 項${names ? `：${names}${items.length > 3 ? "⋯" : ""}` : ""}`;
+}
+
 function completeProject(projectId) {
   const project = projectById(projectId);
   if (!project || projectFinished(project)) return;
-  if (!confirm(`確定將「${project.course || "未命名專案"}」標記為整個專案已完成？`)) return;
+  const summary = projectCompletionSummary(projectId);
+  const issueLines = [
+    completionIssueLine("未完成工作", summary.workTasks),
+    completionIssueLine("待聯繫電話", summary.phoneTasks),
+    completionIssueLine("未完成檢查清單", summary.checklistItems),
+  ].filter(Boolean).join("\n");
+  const message = summary.total
+    ? `「${project.course || "未命名專案"}」仍有未完成項目：\n\n${issueLines}\n\n這些項目不會被自動改為完成。仍要結束整個專案嗎？`
+    : `已確認沒有未完成工作或檢查項目。確定將「${project.course || "未命名專案"}」標記為整個專案已完成？`;
+  if (!confirm(message)) return;
   project.status = "已完成";
   project.completed_date = todayISO();
   project.last_update = todayISO();
@@ -2624,10 +2731,37 @@ async function registerServiceWorker() {
   return navigator.serviceWorker.register("/service-worker.js", { scope: "/" });
 }
 
+function saveNotificationRecord(key, value) {
+  localStorage.setItem(key, JSON.stringify(value));
+}
+
+async function refreshNotificationStatus() {
+  try {
+    if (!("Notification" in window) || window.Notification.permission !== "granted") {
+      saveNotificationRecord(PUSH_STATUS_KEY, { subscribed: false, checked_at: new Date().toISOString() });
+      showToast("這台裝置尚未允許通知");
+      render();
+      return;
+    }
+    if (!("serviceWorker" in navigator)) throw new Error("此瀏覽器不支援背景通知");
+    const registration = await navigator.serviceWorker.getRegistration("/");
+    const subscription = await registration?.pushManager?.getSubscription();
+    saveNotificationRecord(PUSH_STATUS_KEY, { subscribed: Boolean(subscription), checked_at: new Date().toISOString() });
+    showToast(subscription ? "通知訂閱正常" : "尚未建立推播訂閱，請按確認啟用通知");
+    render();
+  } catch (error) {
+    saveNotificationRecord(PUSH_STATUS_KEY, { subscribed: false, checked_at: new Date().toISOString(), message: error.message });
+    showToast(error.message);
+    render();
+  }
+}
+
 async function enableNotifications() {
   try {
-    const permission = await Notification.requestPermission();
+    if (!("Notification" in window)) throw new Error("此瀏覽器不支援通知");
+    const permission = await window.Notification.requestPermission();
     if (permission !== "granted") {
+      saveNotificationRecord(PUSH_STATUS_KEY, { subscribed: false, checked_at: new Date().toISOString() });
       showToast("未取得通知權限");
       render();
       return;
@@ -2652,23 +2786,32 @@ async function enableNotifications() {
     });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || "通知訂閱失敗");
+    saveNotificationRecord(PUSH_STATUS_KEY, { subscribed: true, checked_at: new Date().toISOString() });
     showToast("這台裝置已啟用到時提醒");
     render();
   } catch (error) {
+    saveNotificationRecord(PUSH_STATUS_KEY, { subscribed: false, checked_at: new Date().toISOString(), message: error.message });
     showToast(error.message);
+    render();
   }
 }
 
 async function testNotification() {
   try {
+    await registerServiceWorker();
     const registration = await navigator.serviceWorker.ready;
     await registration.showNotification("老師專案管理提醒", {
       body: "Chrome 通知測試成功",
       tag: `notification-test-${Date.now()}`,
       data: { url: "/" },
     });
+    saveNotificationRecord(NOTIFICATION_TEST_KEY, { success: true, checked_at: new Date().toISOString() });
+    showToast("通知測試已送出");
+    render();
   } catch (error) {
+    saveNotificationRecord(NOTIFICATION_TEST_KEY, { success: false, checked_at: new Date().toISOString(), message: error.message });
     showToast(error.message);
+    render();
   }
 }
 
@@ -2686,6 +2829,7 @@ async function removePushSubscription() {
       });
     }
     await subscription.unsubscribe();
+    saveNotificationRecord(PUSH_STATUS_KEY, { subscribed: false, checked_at: new Date().toISOString() });
   } catch {
     // Logout still clears the local worker and cache if push cleanup fails.
   }
