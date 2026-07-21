@@ -1146,7 +1146,7 @@ body[data-page="projectDetail"] .content {
 }
 
 .project-gantt-row:hover .project-gantt-info {
-  background: #fafbff;
+  background: #f8f9fd;
 }
 
 .project-gantt-info {
@@ -1179,6 +1179,10 @@ body[data-page="projectDetail"] .content {
   font-size: 10px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.project-gantt-info .project-gantt-status.green-text {
+  color: var(--primary);
 }
 
 .project-gantt-info-header {
@@ -1250,26 +1254,32 @@ body[data-page="projectDetail"] .content {
   min-width: 18px;
   height: 23px;
   overflow: hidden;
-  border: 1px solid #cbd3ff;
+  border: 1px solid #cbd3f5;
   border-radius: 5px;
-  background: var(--primary-soft);
+  background: #eef1fb;
   color: var(--text);
   padding: 0;
+  box-shadow: 0 1px 2px rgba(32, 37, 43, 0.05);
 }
 
 .project-gantt-bar.red {
-  border-color: #e5b7bb;
-  background: var(--red-soft);
+  border-color: #ebc4c8;
+  background: #fcf0f1;
 }
 
 .project-gantt-bar.amber {
-  border-color: #dfc99f;
-  background: var(--amber-soft);
+  border-color: #e6d3ad;
+  background: #fbf6eb;
 }
 
 .project-gantt-bar.green {
-  border-color: #b9d0c1;
-  background: var(--green-soft);
+  border-color: #cbd3f5;
+  background: #eef1fb;
+}
+
+.project-gantt-bar.finished {
+  border-color: #bfd1c6;
+  background: #edf4ef;
 }
 
 .project-gantt-actual {
@@ -1280,15 +1290,19 @@ body[data-page="projectDetail"] .content {
 }
 
 .project-gantt-bar.red .project-gantt-actual {
-  background: var(--red);
+  background: #cc6871;
 }
 
 .project-gantt-bar.amber .project-gantt-actual {
-  background: var(--amber);
+  background: #c49546;
 }
 
 .project-gantt-bar.green .project-gantt-actual {
-  background: var(--green);
+  background: var(--primary);
+}
+
+.project-gantt-bar.finished .project-gantt-actual {
+  background: #668774;
 }
 
 .project-gantt-expected {
@@ -1298,8 +1312,8 @@ body[data-page="projectDetail"] .content {
   left: var(--expected-progress);
   z-index: 2;
   width: 2px;
-  background: var(--text);
-  opacity: 0.72;
+  background: rgba(32, 37, 43, 0.64);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.58);
 }
 
 .project-gantt-bar b {
@@ -1308,13 +1322,13 @@ body[data-page="projectDetail"] .content {
   display: block;
   overflow: hidden;
   padding: 3px 5px;
-  color: var(--text);
+  color: #ffffff;
   font-size: 10px;
   line-height: 15px;
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
-  mix-blend-mode: multiply;
+  text-shadow: 0 1px 1px rgba(32, 37, 43, 0.22);
 }
 
 .project-gantt-outside {

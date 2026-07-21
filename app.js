@@ -1018,7 +1018,7 @@ function projectGantt(projects, emptyText) {
       const visibleEnd = end > range.end ? range.end : end;
       const left = Math.max(0, Math.round(((visibleStart - range.start) / 86400000) / range.totalDays * 10000) / 100);
       const width = Math.max(1.2, Math.round((((visibleEnd - visibleStart) / 86400000) + 1) / range.totalDays * 10000) / 100);
-      bar = `<button type="button" class="project-gantt-bar ${schedule.tone}" style="--bar-left:${left}%;--bar-width:${width}%;--actual-progress:${schedule.actual}%;--expected-progress:${schedule.expected}%" data-project-open="${escapeHTML(project.id)}" aria-label="${escapeHTML(project.course || "未命名課程")}，實際進度 ${schedule.actual}%">
+      bar = `<button type="button" class="project-gantt-bar ${schedule.tone} ${projectFinished(project) ? "finished" : ""}" style="--bar-left:${left}%;--bar-width:${width}%;--actual-progress:${schedule.actual}%;--expected-progress:${schedule.expected}%" data-project-open="${escapeHTML(project.id)}" aria-label="${escapeHTML(project.course || "未命名課程")}，實際進度 ${schedule.actual}%">
         <span class="project-gantt-actual"></span><span class="project-gantt-expected" title="今日預計進度 ${schedule.expected}%"></span><b>${schedule.actual}%</b>
       </button>`;
     }
@@ -1026,7 +1026,7 @@ function projectGantt(projects, emptyText) {
       <button type="button" class="project-gantt-info" data-project-open="${escapeHTML(project.id)}">
         <strong>${escapeHTML(project.course || "未命名課程")}</strong>
         <span>${escapeHTML(project.teacher || "未設定老師")}｜${humanDate(projectStartDate(project))}－${humanDate(end ? dateISO(end) : "")}</span>
-        <small class="${schedule.tone}-text">${schedule.label}｜${schedule.actual}%</small>
+        <small class="project-gantt-status ${schedule.tone}-text">${schedule.label}｜${schedule.actual}%</small>
       </button>
       <div class="project-gantt-track">${monthBands}${todayLine}${bar}</div>
     </div>`;
@@ -1034,8 +1034,9 @@ function projectGantt(projects, emptyText) {
   const mobileRows = projects.map((project) => {
     const schedule = projectGanttSchedule(project);
     const milestone = projectMilestone(project);
+    const mobileTone = schedule.label === "進度正常" ? "gray" : schedule.tone;
     return `<button type="button" class="project-gantt-mobile-card" data-project-open="${escapeHTML(project.id)}">
-      <span class="project-gantt-mobile-head"><strong>${escapeHTML(project.course || "未命名課程")}</strong>${pill(schedule.label, schedule.tone)}</span>
+      <span class="project-gantt-mobile-head"><strong>${escapeHTML(project.course || "未命名課程")}</strong>${pill(schedule.label, mobileTone)}</span>
       <span class="project-gantt-mobile-meta">${escapeHTML(project.teacher || "未設定老師")}｜${humanDate(projectStartDate(project))}－${humanDate(project.completed_date || project.target_date)}</span>
       <span class="project-gantt-mobile-progress"><i style="--actual-progress:${schedule.actual}%"></i><b>${schedule.actual}%</b></span>
       <span class="project-gantt-mobile-foot"><small>${escapeHTML(milestone.label)}</small><small class="${schedule.tone}-text">${projectRemainingLabel(project)}</small></span>
