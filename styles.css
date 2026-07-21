@@ -1228,16 +1228,21 @@ body[data-page="projectDetail"] .content {
   bottom: 0;
   left: var(--today-position);
   z-index: 3;
-  width: 2px;
-  background: var(--primary);
+  width: 0;
+  border-left: 1px dashed rgba(81, 102, 230, 0.72);
+  background: transparent;
   pointer-events: none;
 }
 
 .project-gantt-today b {
   position: absolute;
-  top: 5px;
-  left: 5px;
+  top: 6px;
+  left: 6px;
+  border: 1px solid #d7dcf8;
+  border-radius: 4px;
+  background: var(--surface);
   color: var(--primary);
+  padding: 1px 4px;
   font-size: 10px;
   white-space: nowrap;
 }
@@ -1316,6 +1321,31 @@ body[data-page="projectDetail"] .content {
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.58);
 }
 
+.project-gantt-deadline {
+  position: absolute;
+  top: 50%;
+  right: 3px;
+  z-index: 4;
+  width: 8px;
+  height: 8px;
+  transform: translateY(-50%) rotate(45deg);
+  border: 2px solid var(--primary-hover);
+  border-radius: 1px;
+  background: #ffffff;
+}
+
+.project-gantt-bar.red .project-gantt-deadline {
+  border-color: #ad4f58;
+}
+
+.project-gantt-bar.amber .project-gantt-deadline {
+  border-color: #9b712e;
+}
+
+.project-gantt-bar.finished .project-gantt-deadline {
+  border-color: #4f715e;
+}
+
 .project-gantt-bar b {
   position: relative;
   z-index: 2;
@@ -1337,6 +1367,27 @@ body[data-page="projectDetail"] .content {
   left: 12px;
   color: var(--muted);
   font-size: 10px;
+}
+
+.gantt-hover-card {
+  position: fixed;
+  z-index: 120;
+  width: min(320px, calc(100vw - 20px));
+  border: 1px solid #d7dde5;
+  border-radius: 7px;
+  background: #ffffff;
+  box-shadow: 0 12px 30px rgba(24, 35, 48, 0.16);
+  color: var(--text);
+  padding: 10px 12px;
+  font-size: 11px;
+  line-height: 1.65;
+  letter-spacing: 0;
+  pointer-events: none;
+  white-space: pre-line;
+}
+
+.gantt-hover-card[hidden] {
+  display: none;
 }
 
 .project-gantt-mobile-list {

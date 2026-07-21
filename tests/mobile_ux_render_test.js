@@ -24,7 +24,7 @@ function runProjectActionForTest(action, id) {
 }
 return {
   state, todayISO, monthKey, renderDashboard, renderProjects, renderProjectDetail, renderSettings, renderCalendar,
-  projectMilestone, projectFinished, projectGanttSchedule, taskList,
+  projectMilestone, projectFinished, projectGanttSchedule, projectGanttPriority, taskList,
   completeProjectForTest: (id) => runProjectActionForTest(completeProject, id),
   reopenProjectForTest: (id) => runProjectActionForTest(reopenProject, id),
 };`)(browserWindow, storage, () => true, { randomUUID: () => "12345678-1234-1234-1234-123456789abc" });
@@ -105,12 +105,19 @@ harness.state.projectStatusFilter = "active";
 harness.state.projectView = "gantt";
 const ganttProjects = harness.renderProjects();
 assert(ganttProjects.includes("project-gantt-grid") && ganttProjects.includes("project-gantt-today"), "Desktop Gantt view should render a dated timeline and today marker");
+assert(ganttProjects.includes("今天 ") && ganttProjects.includes("project-gantt-deadline"), "Gantt view should label today and mark visible project deadlines");
 assert(ganttProjects.includes('data-gantt-months="3"') && ganttProjects.includes('data-gantt-months="6"') && ganttProjects.includes('data-gantt-months="12"'), "Gantt view should provide three, six, and twelve month ranges");
 assert(ganttProjects.includes("project-gantt-actual") && ganttProjects.includes("project-gantt-expected"), "Gantt bars should compare actual and expected progress");
 assert(ganttProjects.includes("80%｜課綱完成・錄製課程"), "Gantt rows should explain what each milestone percentage means");
 assert(ganttProjects.includes("project-gantt-mobile-list") && ganttProjects.includes("project-gantt-mobile-card"), "Mobile Gantt view should use compact schedule cards");
 assert(ganttProjects.includes(`data-project-open="${project.id}"`), "Gantt projects should open their project detail directly");
+assert(ganttProjects.includes("data-gantt-tooltip=") && ganttProjects.includes("今日預計"), "Gantt bars should expose a complete hover summary");
 assert(harness.projectGanttSchedule(project).actual === 80, "Gantt scheduling should use the project milestone as actual progress");
+const overdueProject = { ...project, id: "project-overdue", start_date: "2000-01-01", target_date: "2000-02-01" };
+const futureProject = { ...project, id: "project-future", start_date: "2099-01-01", target_date: "2099-02-01" };
+const deferredProject = { ...futureProject, id: "project-deferred", cooperation_status: "暫緩" };
+assert(harness.projectGanttPriority(overdueProject) < harness.projectGanttPriority(futureProject), "Overdue projects should sort before normal projects");
+assert(harness.projectGanttPriority(futureProject) < harness.projectGanttPriority(deferredProject), "Deferred projects should sort after normal projects");
 harness.state.projectView = "cards";
 
 harness.state.projectMobileTab = "work";
@@ -169,6 +176,7 @@ assert(styles.includes(".item-card.completed") && styles.includes("opacity: 0.78
 assert(styles.includes(".project-summary-table") && styles.includes(".project-mobile-summary-list"), "Project summary should provide dedicated desktop and mobile layouts");
 assert(styles.includes(".project-gantt-info") && styles.includes("position: sticky"), "Gantt project labels should remain fixed while scrolling horizontally");
 assert(styles.includes(".project-gantt-mobile-card") && styles.includes(".project-gantt-today"), "Gantt view should provide mobile cards and a desktop today marker");
+assert(styles.includes("border-left: 1px dashed") && styles.includes(".gantt-hover-card"), "Today should use a subtle dashed marker and Gantt bars should provide a hover card");
 assert(styles.includes(".bottom-nav .active") && styles.includes("background: transparent"), "Mobile navigation should use a single active-state signal");
 assert(source.includes("updateSyncIndicator") && source.includes("indicator.dataset.syncTone = tone"), "Sync feedback should use stable visual states");
 assert(source.includes('showToast("已標記完成", () =>'), "Completing work should provide a short undo opportunity");
@@ -182,7 +190,7 @@ assert(manifest.includes("app-icon-192.png") && manifest.includes("app-icon-512.
 
 const worker = read("../service-worker.js");
 new Function(worker);
-assert(worker.includes('teacher-operations-v19'), "PWA cache should be refreshed for the Gantt milestone labels");
+assert(worker.includes('teacher-operations-v20'), "PWA cache should be refreshed for the Gantt usability upgrade");
 assert(worker.includes("icon-house.svg") && worker.includes("app-icon-512.png"), "The PWA shell should cache identity and navigation assets");
 assert(source.includes("cloudSavePending"), "Cloud saves made during an active request should remain queued");
 assert(source.includes("scheduleSearchRender"), "Search input should debounce full-page rendering");

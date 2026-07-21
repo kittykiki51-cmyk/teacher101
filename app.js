@@ -562,6 +562,7 @@ function scheduleSearchRender(focusSelector) {
 }
 
 function render() {
+  hideGanttTooltip();
   window.clearTimeout(searchRenderTimer);
   searchRenderTimer = null;
   renderNav();
@@ -1000,14 +1001,78 @@ function projectRemainingLabel(project) {
   return `剩餘 ${days} 天`;
 }
 
+function projectGanttPriority(project) {
+  if (projectFinished(project)) return 5;
+  if (projectDeferred(project)) return 4;
+  const schedule = projectGanttSchedule(project);
+  const end = parseDate(project.target_date);
+  const today = parseDate(todayISO());
+  const remainingDays = end && today ? Math.ceil((end - today) / 86400000) : null;
+  if (remainingDays !== null && remainingDays < 0) return 0;
+  if (schedule.label === "需追蹤") return 1;
+  if (remainingDays !== null && remainingDays <= 7) return 2;
+  return 3;
+}
+
+function projectGanttComparator(left, right) {
+  const priority = projectGanttPriority(left) - projectGanttPriority(right);
+  if (priority) return priority;
+  const leftDate = String((projectFinished(left) ? left.completed_date : left.target_date) || "9999-12-31");
+  const rightDate = String((projectFinished(right) ? right.completed_date : right.target_date) || "9999-12-31");
+  return projectFinished(left) ? rightDate.localeCompare(leftDate) : leftDate.localeCompare(rightDate);
+}
+
+function projectGanttTooltip(project, schedule, milestone) {
+  const next = projectNextStep(project);
+  const difference = schedule.actual - schedule.expected;
+  const comparison = projectFinished(project) ? "專案已完成"
+    : schedule.expected === 0 ? "尚未進入計畫期間"
+      : difference >= 0 ? `超前 ${difference}%` : `落後 ${Math.abs(difference)}%`;
+  return [
+    project.course || "未命名課程",
+    `日期：${humanDate(projectStartDate(project))}－${humanDate(project.completed_date || project.target_date)}｜${projectRemainingLabel(project)}`,
+    `目前階段：${project.current_stage || "未設定"}`,
+    `進度：實際 ${schedule.actual}%｜今日預計 ${schedule.expected}%｜${comparison}`,
+    `里程碑：${milestone.label}`,
+    `下一步：${next.date ? `${humanDate(next.date)}　` : ""}${next.title}`,
+  ].join("\n");
+}
+
+function showGanttTooltip(target) {
+  const content = target.dataset.ganttTooltip;
+  if (!content) return;
+  let tooltip = document.querySelector("#ganttHoverCard");
+  if (!tooltip) {
+    tooltip = document.createElement("div");
+    tooltip.id = "ganttHoverCard";
+    tooltip.className = "gantt-hover-card";
+    tooltip.setAttribute("role", "tooltip");
+    document.body.appendChild(tooltip);
+  }
+  tooltip.textContent = content;
+  tooltip.hidden = false;
+  const targetBox = target.getBoundingClientRect();
+  const tooltipBox = tooltip.getBoundingClientRect();
+  const left = Math.max(10, Math.min(window.innerWidth - tooltipBox.width - 10, targetBox.left + targetBox.width / 2 - tooltipBox.width / 2));
+  const above = targetBox.top - tooltipBox.height - 10;
+  tooltip.style.left = `${left}px`;
+  tooltip.style.top = `${above >= 10 ? above : targetBox.bottom + 10}px`;
+}
+
+function hideGanttTooltip() {
+  const tooltip = document.querySelector("#ganttHoverCard");
+  if (tooltip) tooltip.hidden = true;
+}
+
 function projectGantt(projects, emptyText) {
   if (!projects.length) return `<div class="project-empty">${emptyState(emptyText, "新增課程專案", "data-new-project")}</div>`;
+  const ganttProjects = projects.slice().sort(projectGanttComparator);
   const range = projectGanttRange(state.projectGanttMonths);
   const monthBands = range.months.map((month) => `<span style="--month-left:${month.left}%;--month-width:${month.width}%"></span>`).join("");
   const monthLabels = range.months.map((month) => `<span style="--month-left:${month.left}%;--month-width:${month.width}%">${month.label}</span>`).join("");
   const todayVisible = range.todayPosition >= 0 && range.todayPosition <= 100;
-  const todayLine = todayVisible ? `<span class="project-gantt-today" style="--today-position:${range.todayPosition}%"><b>今天</b></span>` : "";
-  const rows = projects.map((project) => {
+  const todayLine = todayVisible ? `<span class="project-gantt-today" style="--today-position:${range.todayPosition}%"><b>今天 ${new Date().getMonth() + 1}/${new Date().getDate()}</b></span>` : "";
+  const rows = ganttProjects.map((project) => {
     const start = parseDate(projectStartDate(project));
     const end = parseDate((projectFinished(project) ? project.completed_date : project.target_date) || project.target_date);
     const schedule = projectGanttSchedule(project);
@@ -1019,8 +1084,10 @@ function projectGantt(projects, emptyText) {
       const visibleEnd = end > range.end ? range.end : end;
       const left = Math.max(0, Math.round(((visibleStart - range.start) / 86400000) / range.totalDays * 10000) / 100);
       const width = Math.max(1.2, Math.round((((visibleEnd - visibleStart) / 86400000) + 1) / range.totalDays * 10000) / 100);
-      bar = `<button type="button" class="project-gantt-bar ${schedule.tone} ${projectFinished(project) ? "finished" : ""}" style="--bar-left:${left}%;--bar-width:${width}%;--actual-progress:${schedule.actual}%;--expected-progress:${schedule.expected}%" data-project-open="${escapeHTML(project.id)}" aria-label="${escapeHTML(project.course || "未命名課程")}，實際進度 ${schedule.actual}%，${escapeHTML(milestone.label)}">
-        <span class="project-gantt-actual"></span><span class="project-gantt-expected" title="今日預計進度 ${schedule.expected}%"></span><b>${schedule.actual}%</b>
+      const deadlineVisible = end >= range.start && end <= range.end;
+      const deadlineLabel = `${projectFinished(project) ? "完成日期" : "預計完成"}：${humanDate(end ? dateISO(end) : "")}｜${projectRemainingLabel(project)}`;
+      bar = `<button type="button" class="project-gantt-bar ${schedule.tone} ${projectFinished(project) ? "finished" : ""}" style="--bar-left:${left}%;--bar-width:${width}%;--actual-progress:${schedule.actual}%;--expected-progress:${schedule.expected}%" data-project-open="${escapeHTML(project.id)}" data-gantt-tooltip="${escapeHTML(projectGanttTooltip(project, schedule, milestone))}" aria-label="${escapeHTML(project.course || "未命名課程")}，實際進度 ${schedule.actual}%，${escapeHTML(milestone.label)}">
+        <span class="project-gantt-actual"></span><span class="project-gantt-expected" title="今日預計進度 ${schedule.expected}%"></span>${deadlineVisible ? `<span class="project-gantt-deadline" title="${escapeHTML(deadlineLabel)}"></span>` : ""}<b>${schedule.actual}%</b>
       </button>`;
     }
     return `<div class="project-gantt-row">
@@ -1032,7 +1099,7 @@ function projectGantt(projects, emptyText) {
       <div class="project-gantt-track">${monthBands}${todayLine}${bar}</div>
     </div>`;
   }).join("");
-  const mobileRows = projects.map((project) => {
+  const mobileRows = ganttProjects.map((project) => {
     const schedule = projectGanttSchedule(project);
     const milestone = projectMilestone(project);
     const mobileTone = schedule.label === "進度正常" ? "gray" : schedule.tone;
@@ -1643,6 +1710,13 @@ function bindContentEvents() {
     state.projectGanttMonths = Number(button.dataset.ganttMonths) || 6;
     render();
   }));
+  document.querySelectorAll("[data-gantt-tooltip]").forEach((bar) => {
+    bar.addEventListener("mouseenter", () => showGanttTooltip(bar));
+    bar.addEventListener("mouseleave", hideGanttTooltip);
+    bar.addEventListener("focus", () => showGanttTooltip(bar));
+    bar.addEventListener("blur", hideGanttTooltip);
+  });
+  document.querySelector(".project-gantt-scroll")?.addEventListener("scroll", hideGanttTooltip, { passive: true });
   document.querySelectorAll("[data-project-sort]").forEach((button) => button.addEventListener("click", () => {
     const key = button.dataset.projectSort;
     if (state.projectTableSort === key) {
