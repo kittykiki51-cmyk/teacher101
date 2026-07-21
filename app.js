@@ -1011,6 +1011,7 @@ function projectGantt(projects, emptyText) {
     const start = parseDate(projectStartDate(project));
     const end = parseDate((projectFinished(project) ? project.completed_date : project.target_date) || project.target_date);
     const schedule = projectGanttSchedule(project);
+    const milestone = projectMilestone(project);
     const overlaps = start && end && end >= range.start && start <= range.end;
     let bar = `<span class="project-gantt-outside">不在目前範圍</span>`;
     if (overlaps) {
@@ -1018,7 +1019,7 @@ function projectGantt(projects, emptyText) {
       const visibleEnd = end > range.end ? range.end : end;
       const left = Math.max(0, Math.round(((visibleStart - range.start) / 86400000) / range.totalDays * 10000) / 100);
       const width = Math.max(1.2, Math.round((((visibleEnd - visibleStart) / 86400000) + 1) / range.totalDays * 10000) / 100);
-      bar = `<button type="button" class="project-gantt-bar ${schedule.tone} ${projectFinished(project) ? "finished" : ""}" style="--bar-left:${left}%;--bar-width:${width}%;--actual-progress:${schedule.actual}%;--expected-progress:${schedule.expected}%" data-project-open="${escapeHTML(project.id)}" aria-label="${escapeHTML(project.course || "未命名課程")}，實際進度 ${schedule.actual}%">
+      bar = `<button type="button" class="project-gantt-bar ${schedule.tone} ${projectFinished(project) ? "finished" : ""}" style="--bar-left:${left}%;--bar-width:${width}%;--actual-progress:${schedule.actual}%;--expected-progress:${schedule.expected}%" data-project-open="${escapeHTML(project.id)}" aria-label="${escapeHTML(project.course || "未命名課程")}，實際進度 ${schedule.actual}%，${escapeHTML(milestone.label)}">
         <span class="project-gantt-actual"></span><span class="project-gantt-expected" title="今日預計進度 ${schedule.expected}%"></span><b>${schedule.actual}%</b>
       </button>`;
     }
@@ -1026,7 +1027,7 @@ function projectGantt(projects, emptyText) {
       <button type="button" class="project-gantt-info" data-project-open="${escapeHTML(project.id)}">
         <strong>${escapeHTML(project.course || "未命名課程")}</strong>
         <span>${escapeHTML(project.teacher || "未設定老師")}｜${humanDate(projectStartDate(project))}－${humanDate(end ? dateISO(end) : "")}</span>
-        <small class="project-gantt-status ${schedule.tone}-text">${schedule.label}｜${schedule.actual}%</small>
+        <small class="project-gantt-status ${schedule.tone}-text" title="${schedule.actual}%｜${escapeHTML(milestone.label)}｜${schedule.label}">${schedule.actual}%｜${escapeHTML(milestone.label)} · ${schedule.label}</small>
       </button>
       <div class="project-gantt-track">${monthBands}${todayLine}${bar}</div>
     </div>`;
