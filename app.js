@@ -1022,17 +1022,12 @@ function projectGanttComparator(left, right) {
   return projectFinished(left) ? rightDate.localeCompare(leftDate) : leftDate.localeCompare(rightDate);
 }
 
-function projectGanttTooltip(project, schedule, milestone) {
+function projectGanttTooltip(project, milestone) {
   const next = projectNextStep(project);
-  const difference = schedule.actual - schedule.expected;
-  const comparison = projectFinished(project) ? "專案已完成"
-    : schedule.expected === 0 ? "尚未進入計畫期間"
-      : difference >= 0 ? `超前 ${difference}%` : `落後 ${Math.abs(difference)}%`;
   return [
     project.course || "未命名課程",
     `日期：${humanDate(projectStartDate(project))}－${humanDate(project.completed_date || project.target_date)}｜${projectRemainingLabel(project)}`,
     `目前階段：${project.current_stage || "未設定"}`,
-    `進度：實際 ${schedule.actual}%｜今日預計 ${schedule.expected}%｜${comparison}`,
     `里程碑：${milestone.label}`,
     `下一步：${next.date ? `${humanDate(next.date)}　` : ""}${next.title}`,
   ].join("\n");
@@ -1078,7 +1073,7 @@ function projectGantt(projects, emptyText) {
     const end = parseDate((projectFinished(project) ? project.completed_date : project.target_date) || project.target_date);
     const schedule = projectGanttSchedule(project);
     const milestone = projectMilestone(project);
-    const tooltip = escapeHTML(projectGanttTooltip(project, schedule, milestone));
+    const tooltip = escapeHTML(projectGanttTooltip(project, milestone));
     const overlaps = start && end && end >= range.start && start <= range.end;
     let bar = `<span class="project-gantt-outside">不在目前範圍</span>`;
     if (overlaps) {
