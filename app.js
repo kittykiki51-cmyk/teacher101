@@ -35,6 +35,9 @@ let state = {
   projectRoleFilter: "全部",
   projectModeFilter: "全部類型",
   hideCompletedProjects: true,
+  projectView: "cards",
+  projectTableSort: "target_date",
+  projectTableSortDirection: "asc",
   calendarQuery: "",
   calendarStatusFilter: "全部",
   calendarView: "month",
@@ -572,6 +575,7 @@ function taskOverflowMenu(task, options = {}) {
     <summary aria-label="更多工作操作" title="更多工作操作">⋯</summary>
     <div class="task-overflow-menu">
       ${options.postpone ? `<button type="button" data-postpone="${escapeHTML(task.id)}">延後一天</button>` : ""}
+      ${options.goToProject && task.project_id ? `<button type="button" data-project-open="${escapeHTML(task.project_id)}">前往專案</button>` : ""}
       <button type="button" data-task-edit="${escapeHTML(task.id)}">編輯</button>
       ${options.delete ? `<button type="button" class="danger-text" data-calendar-delete="${escapeHTML(task.id)}">刪除</button>` : ""}
     </div>
@@ -613,9 +617,11 @@ function renderProjects() {
       && (state.projectRoleFilter === "全部" || project.role === state.projectRoleFilter)
       && (state.projectModeFilter === "全部類型" || mode === state.projectModeFilter)
       && (!state.hideCompletedProjects || !projectFinished(project));
-  }).sort((a, b) => projectSortRank(a, currentMonth) - projectSortRank(b, currentMonth)
-    || String(a.target_month || "9999-99").localeCompare(String(b.target_month || "9999-99"))
-    || String(a.target_date || "9999-12-31").localeCompare(String(b.target_date || "9999-12-31")));
+  }).sort(state.projectView === "table"
+    ? projectTableComparator
+    : (a, b) => projectSortRank(a, currentMonth) - projectSortRank(b, currentMonth)
+      || String(a.target_month || "9999-99").localeCompare(String(b.target_month || "9999-99"))
+      || String(a.target_date || "9999-12-31").localeCompare(String(b.target_date || "9999-12-31")));
   return `
     <div class="desktop-page-title project-page-title">
       <div>
@@ -636,9 +642,16 @@ function renderProjects() {
         ${state.hideCompletedProjects ? "顯示已完成" : "隱藏已完成"}
       </button>
     </div>
-    <div class="project-list-grid">
-      ${projectCards(projects, "沒有符合條件的課程專案。")}
+    <div class="project-view-toolbar">
+      <p class="muted">共 ${projects.length} 個專案</p>
+      <div class="segmented-control project-view-switch" aria-label="專案顯示方式">
+        <button type="button" class="${state.projectView === "cards" ? "active" : ""}" data-project-view="cards" aria-pressed="${state.projectView === "cards"}">卡片</button>
+        <button type="button" class="${state.projectView === "table" ? "active" : ""}" data-project-view="table" aria-pressed="${state.projectView === "table"}">總表</button>
+      </div>
     </div>
+    ${state.projectView === "table"
+      ? projectSummaryTable(projects, "沒有符合條件的課程專案。")
+      : `<div class="project-list-grid">${projectCards(projects, "沒有符合條件的課程專案。")}</div>`}
   `;
 }
 
@@ -677,6 +690,95 @@ function projectNextStep(project) {
     title: task?.title || project.next_step || "目前沒有未完成工作",
     date: task?.date || project.next_step_date || "",
   };
+}
+
+function projectStartDate(project) {
+  if (project.start_date) return String(project.start_date).slice(0, 10);
+  if (project.created_at) return String(project.created_at).slice(0, 10);
+  const firstTaskDate = tasksForProject(project.id).map((task) => task.date).filter(Boolean).sort()[0];
+  return firstTaskDate || (project.target_month ? `${project.target_month}-01` : "");
+}
+
+function projectMilestone(project) {
+  const stage = `${project.current_stage || ""} ${project.status || ""}`;
+  const completedStages = (project.stages || []).filter((item) => item.status === STATUS_COMPLETED).map((item) => item.name || "").join(" ");
+  const context = `${stage} ${completedStages}`;
+  if (projectFinished(project) || /已上架|正式上架/.test(stage)) return { progress: 100, label: "已上架" };
+  if (/排課|錄製完成|錄完|後製|剪輯|課程上架/.test(context)) return { progress: 90, label: "排課／錄製完成" };
+  if (/錄製|開錄|課綱.*完成/.test(context)) return { progress: 80, label: "課綱完成・錄製課程" };
+  if (/課綱|合約/.test(context)) return { progress: 60, label: "初版課綱已討論" };
+  return { progress: 50, label: "已完成面試" };
+}
+
+function projectTableSortValue(project, key) {
+  if (key === "course") return project.course || "";
+  if (key === "teacher") return project.teacher || "";
+  if (key === "start_date") return projectStartDate(project) || "9999-12-31";
+  if (key === "progress") return projectMilestone(project).progress;
+  if (key === "status") return projectRisk(project).label;
+  return project.target_date || "9999-12-31";
+}
+
+function projectTableComparator(a, b) {
+  const left = projectTableSortValue(a, state.projectTableSort);
+  const right = projectTableSortValue(b, state.projectTableSort);
+  const result = typeof left === "number" && typeof right === "number"
+    ? left - right
+    : String(left).localeCompare(String(right), "zh-Hant");
+  return state.projectTableSortDirection === "desc" ? -result : result;
+}
+
+function projectSortButton(label, key) {
+  const active = state.projectTableSort === key;
+  const marker = active ? (state.projectTableSortDirection === "asc" ? "↑" : "↓") : "";
+  return `<button type="button" class="project-sort-button ${active ? "active" : ""}" data-project-sort="${key}">${label}<span aria-hidden="true">${marker}</span></button>`;
+}
+
+function projectSummaryTable(projects, emptyText) {
+  if (!projects.length) return `<div class="project-empty">${emptyState(emptyText, "新增課程專案", "data-new-project")}</div>`;
+  const rows = projects.map((project) => {
+    const milestone = projectMilestone(project);
+    const risk = projectRisk(project);
+    const next = projectNextStep(project);
+    const finished = projectFinished(project);
+    const endDate = finished ? project.completed_date || project.target_date : project.target_date;
+    return `<tr class="${finished ? "finished" : ""}">
+      <td><button type="button" class="project-table-link" data-project-open="${escapeHTML(project.id)}">${escapeHTML(project.course || "未命名課程")}</button></td>
+      <td>${escapeHTML(project.teacher || "未設定老師")}</td>
+      <td>${humanDate(projectStartDate(project))}</td>
+      <td><span class="project-date-label">${finished ? "完成" : "預計"}</span>${humanDate(endDate)}</td>
+      <td><div class="project-progress-cell"><div class="project-progress-copy"><strong>${milestone.progress}%</strong><span>${escapeHTML(milestone.label)}</span></div><div class="project-progress-track" aria-label="${milestone.progress}% ${escapeHTML(milestone.label)}"><span style="--project-progress:${milestone.progress}%"></span></div></div></td>
+      <td>${escapeHTML(project.current_stage || "未設定")}</td>
+      <td><span class="project-table-next">${next.date ? `${humanDate(next.date)}　` : ""}${escapeHTML(next.title)}</span></td>
+      <td>${pill(risk.label, finished ? "gray" : risk.tone)}</td>
+      <td><button type="button" class="small-button" data-project-open="${escapeHTML(project.id)}">開啟</button></td>
+    </tr>`;
+  }).join("");
+  const mobileRows = projects.map((project) => {
+    const milestone = projectMilestone(project);
+    const risk = projectRisk(project);
+    const next = projectNextStep(project);
+    return `<button type="button" class="project-mobile-summary" data-project-open="${escapeHTML(project.id)}">
+      <span class="project-mobile-summary-head"><strong>${escapeHTML(project.course || "未命名課程")}</strong><b>${milestone.progress}%</b></span>
+      <span class="project-mobile-summary-meta">${escapeHTML(project.teacher || "未設定老師")}｜${humanDate(project.target_date)}｜${escapeHTML(risk.label)}</span>
+      <span class="project-progress-track" aria-hidden="true"><span style="--project-progress:${milestone.progress}%"></span></span>
+      <span class="project-mobile-summary-stage">${escapeHTML(milestone.label)}｜下一步：${escapeHTML(next.title)}</span>
+    </button>`;
+  }).join("");
+  return `<div class="project-table-shell">
+    <table class="project-summary-table">
+      <thead><tr>
+        <th>${projectSortButton("專案名稱", "course")}</th>
+        <th>${projectSortButton("老師", "teacher")}</th>
+        <th>${projectSortButton("開始日期", "start_date")}</th>
+        <th>${projectSortButton("上架／完成", "target_date")}</th>
+        <th>${projectSortButton("執行進度", "progress")}</th>
+        <th>目前階段</th><th>下一步</th><th>${projectSortButton("狀態", "status")}</th><th>操作</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div class="project-mobile-summary-list">${mobileRows}</div>
+  </div>`;
 }
 
 function projectCards(projects, emptyText) {
@@ -942,10 +1044,12 @@ function renderCalendarPanelTask(task) {
     <div class="calendar-panel-task-main">
       ${completed ? `<span class="calendar-task-color" aria-hidden="true"></span>` : `<button type="button" class="calendar-task-color mobile-task-complete" data-complete="${escapeHTML(task.id)}" aria-label="完成 ${escapeHTML(task.title || "未命名工作")}"></button>`}
       <button type="button" class="calendar-panel-task-copy mobile-task-content" data-task-edit="${escapeHTML(task.id)}"><p class="calendar-panel-title">${escapeHTML(task.title || "未命名工作")}</p><p class="calendar-panel-meta">${escapeHTML(kind.label)} · ${escapeHTML(task.time || "全天")} · ${escapeHTML(project?.course || "我的工作")}${task.reminder_minutes !== undefined && task.reminder_minutes !== "" ? ` · ${escapeHTML(reminderLabel(task.reminder_minutes))}` : ""}</p>${task.note ? `<p class="calendar-panel-note">${escapeHTML(task.note)}</p>` : ""}</button>
-      ${completed ? "" : taskOverflowMenu(task, { postpone: true, delete: true })}
+      ${taskOverflowMenu(task, { postpone: !completed, delete: true, goToProject: Boolean(project) })}
     </div>
     <div class="calendar-panel-actions">
-      ${completed ? pill("已完成", "green") : `<button class="small-button" data-complete="${escapeHTML(task.id)}">完成</button><button class="small-button" data-postpone="${escapeHTML(task.id)}">延後一天</button>`}
+      ${completed ? pill("已完成", "green") : `<button class="small-button" data-complete="${escapeHTML(task.id)}">完成</button>`}
+      ${project ? `<button class="small-button project-jump-button" data-project-open="${escapeHTML(project.id)}">前往專案</button>` : ""}
+      ${completed ? "" : `<button class="small-button" data-postpone="${escapeHTML(task.id)}">延後一天</button>`}
       <button class="small-button" data-task-edit="${escapeHTML(task.id)}">編輯</button>
       <button class="calendar-delete-button" data-calendar-delete="${escapeHTML(task.id)}">刪除</button>
     </div>
@@ -1241,6 +1345,20 @@ function bindContentEvents() {
     state.hideCompletedProjects = !state.hideCompletedProjects;
     render();
   });
+  document.querySelectorAll("[data-project-view]").forEach((button) => button.addEventListener("click", () => {
+    state.projectView = button.dataset.projectView;
+    render();
+  }));
+  document.querySelectorAll("[data-project-sort]").forEach((button) => button.addEventListener("click", () => {
+    const key = button.dataset.projectSort;
+    if (state.projectTableSort === key) {
+      state.projectTableSortDirection = state.projectTableSortDirection === "asc" ? "desc" : "asc";
+    } else {
+      state.projectTableSort = key;
+      state.projectTableSortDirection = key === "progress" ? "desc" : "asc";
+    }
+    render();
+  }));
   const calendarSearch = $("#calendarSearch");
   if (calendarSearch) calendarSearch.addEventListener("input", (event) => {
     state.calendarQuery = event.target.value;
@@ -1699,7 +1817,11 @@ function openProjectDialog(project = null) {
           </label>
         </section>
         <section class="project-form-section" data-project-form-section="schedule">
-          <div class="two-col">
+          <div class="three-col">
+            <label>
+              <span>專案開始日</span>
+              <input class="search-input" type="date" name="start_date" value="${escapeHTML(project ? projectStartDate(project) : todayISO())}" required>
+            </label>
             <label>
               <span>目標月份</span>
               <input class="search-input" type="month" name="target_month" value="${escapeHTML(project?.target_month || currentMonth)}" required>
@@ -1810,6 +1932,7 @@ function saveProjectFromForm(event) {
   const form = new FormData(event.currentTarget);
   const teacher = String(form.get("teacher") || "").trim();
   const course = String(form.get("course") || "").trim();
+  const startDate = String(form.get("start_date") || "").trim();
   const targetMonth = String(form.get("target_month") || "").trim();
   const targetDate = String(form.get("target_date") || "").trim();
   if (!teacher || !course) {
@@ -1817,7 +1940,7 @@ function saveProjectFromForm(event) {
     showToast("請填寫老師名稱與課程名稱");
     return;
   }
-  if (!/^\d{4}-\d{2}$/.test(targetMonth) || !/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}$/.test(targetMonth) || !/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) {
     activateProjectFormSection(event.currentTarget.closest(".modal-layer"), "schedule");
     showToast("請確認日期格式");
     return;
@@ -1841,7 +1964,7 @@ function saveProjectFromForm(event) {
   };
   const currentIndex = STAGE_NAMES.indexOf(stage);
   Object.assign(project, {
-    teacher, course, source_name: course, target_month: targetMonth, target_date: targetDate,
+    teacher, course, source_name: course, start_date: startDate, target_month: targetMonth, target_date: targetDate,
     role: String(form.get("role") || ROLE_UNSET),
     mode: form.get("mode") === "直播" ? "live" : "recorded",
     cooperation_status: String(form.get("cooperation") || "順利"),

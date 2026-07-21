@@ -9,7 +9,7 @@ const source = $.NSString.stringWithContentsOfFileEncodingError(sourcePath, $.NS
 const testableSource = source.replace(/\ninitializeApp\(\);\s*$/, "");
 const storage = { getItem: () => null, setItem: () => null, removeItem: () => null };
 const browserWindow = { location: { protocol: "file:" }, INITIAL_WORKSPACE: null };
-const harness = new Function("window", "localStorage", `${testableSource}\nreturn { state, todayISO, parseDate, humanDate, renderMonthCalendar, renderWeekCalendar, renderDayCalendar, renderCalendarPanel, renderMobileCalendarAgenda, calendarColor, calendarTaskKind, calendarHours };`)(browserWindow, storage);
+const harness = new Function("window", "localStorage", `${testableSource}\nreturn { state, todayISO, parseDate, humanDate, renderMonthCalendar, renderWeekCalendar, renderDayCalendar, renderCalendarPanel, renderCalendarPanelTask, renderMobileCalendarAgenda, calendarColor, calendarTaskKind, calendarHours };`)(browserWindow, storage);
 
 const today = harness.todayISO();
 harness.state.workspace = {
@@ -50,6 +50,12 @@ assert(day.includes("data-drop-all-day"), "Day view should provide an all-day dr
 const panel = harness.renderCalendarPanel(harness.state.workspace.tasks);
 assert(panel.includes("延後一天"), "Selected-date panel should include postpone actions");
 assert(panel.includes("data-calendar-delete"), "Selected-date panel should include delete actions");
+const projectPanelTask = harness.renderCalendarPanelTask(harness.state.workspace.tasks[1]);
+const personalPanelTask = harness.renderCalendarPanelTask(harness.state.workspace.tasks[0]);
+const completedProjectPanelTask = harness.renderCalendarPanelTask({ ...harness.state.workspace.tasks[1], status: "已完成" });
+assert(projectPanelTask.includes('data-project-open="project-alpha"') && projectPanelTask.includes("前往專案"), "Project calendar work should link directly to its project");
+assert(!personalPanelTask.includes("前往專案"), "Personal calendar work should not show a project link");
+assert(completedProjectPanelTask.includes("前往專案"), "Completed project work should keep its project link");
 assert(harness.calendarColor(harness.state.workspace.tasks[0]).color === "#5166e6", "Personal tasks should use royal blue");
 assert(harness.calendarHours([{ time: "06:30" }, { time: "23:00" }]).join(",") === Array.from({ length: 18 }, (_, index) => index + 6).join(","), "Time grid should include early and late tasks");
 
