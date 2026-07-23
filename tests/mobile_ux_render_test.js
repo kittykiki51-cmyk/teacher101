@@ -25,7 +25,7 @@ function runProjectActionForTest(action, id) {
 return {
   state, todayISO, monthKey, renderDashboard, renderProjects, renderProjectDetail, renderSettings, renderCalendar,
   projectMilestone, projectFinished, projectGanttSchedule, projectGanttPriority, projectGanttTooltip, taskList,
-  projectCompletionSummary, archiveYearSelection, notificationSettingsState,
+  projectCompletionSummary, archiveYearSelection, notificationSettingsState, validEmailAddress,
   completeProjectForTest: (id) => runProjectActionForTest(completeProject, id),
   reopenProjectForTest: (id) => runProjectActionForTest(reopenProject, id),
 };`)(browserWindow, storage, () => true, { randomUUID: () => "12345678-1234-1234-1234-123456789abc" });
@@ -44,7 +44,7 @@ const project = {
   current_stage: "課程錄製",
   status: "進行中",
   cooperation_status: "順利",
-  links: {},
+  links: { "講師 Gmail": "teacher@gmail.com" },
 };
 const completedProject = {
   ...project,
@@ -134,6 +134,7 @@ assert(workDetail.includes('data-project-mobile-panel="work"'), "Project work pa
 assert(workDetail.includes('data-project-mobile-panel="checklist"'), "Project checklist panel should be available");
 assert(workDetail.includes('data-project-mobile-panel="message"'), "Project message panel should be available");
 assert(workDetail.includes('data-project-mobile-panel="history"'), "Project history panel should be available");
+assert(workDetail.includes('data-open-email="teacher@gmail.com"') && workDetail.includes("寄信給講師"), "Project details should open an email to the teacher");
 
 harness.state.projectMobileTab = "message";
 const messageDetail = harness.renderProjectDetail();
@@ -156,6 +157,8 @@ assert(source.includes('type="month" name="target_month"'), "Project month shoul
 assert(source.includes('type="date" name="target_date"'), "Project date should use the device date picker");
 assert(source.includes('type="date" name="start_date"'), "Project forms should capture the project start date for summary reporting");
 assert(source.includes('name="teacher" required') && source.includes('autocomplete="off"'), "Teacher name should not request contact autofill");
+assert(source.includes('name="teacher_email"') && !source.includes('name="course_link"'), "Project forms should collect teacher email instead of a course page URL");
+assert(harness.validEmailAddress("teacher@gmail.com") === "teacher@gmail.com" && harness.validEmailAddress("not-an-email") === "", "Teacher email should be validated before saving or opening mail");
 assert(source.includes("project-form-tabs"), "Project forms should provide mobile sections");
 assert(source.includes('data-project-form-section="basic"') && source.includes('data-project-form-section="schedule"') && source.includes('data-project-form-section="links"'), "All project form sections should be available");
 assert(source.includes("nav-icon-${item.icon}"), "Desktop and mobile navigation should render consistent line icons");
@@ -201,7 +204,7 @@ assert(manifest.includes("app-icon-192.png") && manifest.includes("app-icon-512.
 
 const worker = read("../service-worker.js");
 new Function(worker);
-assert(worker.includes('teacher-operations-v23'), "PWA cache should be refreshed for completion, archive, and notification improvements");
+assert(worker.includes('teacher-operations-v24'), "PWA cache should be refreshed for the teacher Gmail field");
 assert(worker.includes("icon-house.svg") && worker.includes("app-icon-512.png"), "The PWA shell should cache identity and navigation assets");
 assert(source.includes("cloudSavePending"), "Cloud saves made during an active request should remain queued");
 assert(source.includes("scheduleSearchRender"), "Search input should debounce full-page rendering");

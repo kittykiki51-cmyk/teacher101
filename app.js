@@ -474,6 +474,12 @@ function validExternalUrl(value) {
   }
 }
 
+function validEmailAddress(value) {
+  const email = String(value || "").trim();
+  if (!email || email.length > 254 || /[\r\n]/.test(email)) return "";
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : "";
+}
+
 function pill(label, tone = "") {
   return `<span class="pill ${tone}">${escapeHTML(label)}</span>`;
 }
@@ -1199,7 +1205,7 @@ function renderProjectDetail() {
           <button class="ghost-button" data-task-add="${escapeHTML(project.id)}">新增工作</button>
           <button class="ghost-button" data-project-edit="${escapeHTML(project.id)}">編輯專案</button>
           ${links["雲端資料夾"] ? `<button class="ghost-button" data-open-url="${escapeHTML(links["雲端資料夾"])}">開啟雲端</button>` : ""}
-          ${links["課程頁"] ? `<button class="ghost-button" data-open-url="${escapeHTML(links["課程頁"])}">開啟課程頁</button>` : ""}
+          ${links["講師 Gmail"] ? `<button class="ghost-button" data-open-email="${escapeHTML(links["講師 Gmail"])}">寄信給講師</button>` : ""}
         </div>
       </div>
     </section>
@@ -1854,6 +1860,14 @@ function bindContentEvents() {
     }
     window.open(url, "_blank", "noopener,noreferrer");
   }));
+  document.querySelectorAll("[data-open-email]").forEach((button) => button.addEventListener("click", () => {
+    const email = validEmailAddress(button.dataset.openEmail);
+    if (!email) {
+      showToast("講師 Email 格式不正確");
+      return;
+    }
+    window.location.href = `mailto:${email}`;
+  }));
 
   document.querySelectorAll("[data-complete]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -2288,7 +2302,7 @@ function openProjectDialog(project = null) {
         </section>
         <section class="project-form-section" data-project-form-section="links">
           <label><span>雲端資料夾</span><input class="search-input" type="url" inputmode="url" name="cloud" value="${escapeHTML(project?.links?.["雲端資料夾"] || "")}" placeholder="https://..." autocomplete="off"></label>
-          <label><span>課程頁</span><input class="search-input" type="url" inputmode="url" name="course_link" value="${escapeHTML(project?.links?.["課程頁"] || "")}" placeholder="https://..." autocomplete="off"></label>
+          <label><span>講師 Gmail</span><input class="search-input" type="email" inputmode="email" name="teacher_email" value="${escapeHTML(project?.links?.["講師 Gmail"] || "")}" placeholder="teacher@gmail.com" autocomplete="email" autocapitalize="none" spellcheck="false"></label>
         </section>
         <input type="hidden" name="project_id" value="${escapeHTML(project?.id || "")}">
         <div class="modal-actions split-actions">
@@ -2390,12 +2404,12 @@ function saveProjectFromForm(event) {
     return;
   }
   const rawCloudLink = String(form.get("cloud") || "").trim();
-  const rawCourseLink = String(form.get("course_link") || "").trim();
+  const rawTeacherEmail = String(form.get("teacher_email") || "").trim();
   const cloudLink = validExternalUrl(rawCloudLink);
-  const courseLink = validExternalUrl(rawCourseLink);
-  if ((rawCloudLink && !cloudLink) || (rawCourseLink && !courseLink)) {
+  const teacherEmail = validEmailAddress(rawTeacherEmail);
+  if ((rawCloudLink && !cloudLink) || (rawTeacherEmail && !teacherEmail)) {
     activateProjectFormSection(event.currentTarget.closest(".modal-layer"), "links");
-    showToast("雲端資料夾與課程頁必須是 http 或 https 網址");
+    showToast(rawCloudLink && !cloudLink ? "雲端資料夾必須是 http 或 https 網址" : "請輸入正確的講師 Email");
     return;
   }
 
@@ -2413,7 +2427,7 @@ function saveProjectFromForm(event) {
     mode: form.get("mode") === "直播" ? "live" : "recorded",
     cooperation_status: String(form.get("cooperation") || "順利"),
     current_stage: stage,
-    links: { "雲端資料夾": cloudLink, "課程頁": courseLink },
+    links: { ...(project.links || {}), "雲端資料夾": cloudLink, "講師 Gmail": teacherEmail },
     stages: STAGE_NAMES.map((name, index) => ({ id: project.stages?.[index]?.id || uid("stage"), name, status: index < currentIndex ? STATUS_COMPLETED : index === currentIndex ? "進行中" : "未完成" })),
     last_update: todayISO(),
   });
