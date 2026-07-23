@@ -198,13 +198,16 @@ assert(source.includes('showToast("已標記完成", () =>'), "Completing work s
 const index = read("../index.html");
 assert(index.includes("mobile-button-label"), "Mobile top bar should use a compact add label");
 assert(index.includes('href="app-icon.svg"') && index.includes('href="app-icon-192.png"'), "The app should publish browser and home-screen icons");
+assert(index.includes('styles.css?v=25') && index.includes('app.js?v=25'), "The page should request versioned application assets after deployment");
 
 const manifest = read("../manifest.json");
 assert(manifest.includes("app-icon-192.png") && manifest.includes("app-icon-512.png") && manifest.includes("maskable"), "The PWA manifest should publish installable app icons");
 
 const worker = read("../service-worker.js");
 new Function(worker);
-assert(worker.includes('teacher-operations-v24'), "PWA cache should be refreshed for the teacher Gmail field");
+assert(worker.includes('teacher-operations-v25'), "PWA cache should be refreshed with network-first application assets");
+assert(worker.includes('"/styles.css?v=25"') && worker.includes('"/app.js?v=25"'), "The PWA shell should cache versioned application assets");
+assert(worker.includes("event.respondWith(updateCache.catch"), "Online application assets should load from the network before falling back to cache");
 assert(worker.includes("icon-house.svg") && worker.includes("app-icon-512.png"), "The PWA shell should cache identity and navigation assets");
 assert(source.includes("cloudSavePending"), "Cloud saves made during an active request should remain queued");
 assert(source.includes("scheduleSearchRender"), "Search input should debounce full-page rendering");

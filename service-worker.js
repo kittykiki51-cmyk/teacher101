@@ -1,6 +1,6 @@
-const CACHE_NAME = "teacher-operations-v24";
+const CACHE_NAME = "teacher-operations-v25";
 const APP_SHELL = [
-  "/", "/styles.css", "/app.js", "/manifest.json", "/app-icon.svg",
+  "/", "/styles.css?v=25", "/app.js?v=25", "/manifest.json", "/app-icon.svg",
   "/app-icon-192.png", "/app-icon-512.png", "/icon-house.svg", "/icon-folders.svg",
   "/icon-calendar-days.svg", "/icon-settings.svg",
 ];
@@ -27,8 +27,7 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(updateCache.catch(() => caches.match(event.request).then((cached) => cached || caches.match("/"))));
     return;
   }
-  event.respondWith(caches.match(event.request).then((cached) => cached || updateCache));
-  event.waitUntil(updateCache.then(() => undefined).catch(() => undefined));
+  event.respondWith(updateCache.catch(() => caches.match(event.request)));
 });
 
 self.addEventListener("push", (event) => {
