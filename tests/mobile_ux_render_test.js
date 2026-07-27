@@ -26,7 +26,7 @@ return {
   state, todayISO, monthKey, offsetMonthKey, renderDashboard, renderProjects, renderProjectDetail, renderSettings, renderCalendar,
   projectMilestone, projectFinished, projectGanttSchedule, projectGanttPriority, projectGanttTooltip, taskList,
   projectCompletionSummary, archiveYearSelection, notificationSettingsState, validEmailAddress,
-  monthlyGoalProjects, taskDurationMinutes, taskTimeLabel,
+  monthlyGoalProjects, taskDurationMinutes, taskTimeLabel, taskInterval, taskTimeConflicts,
   completeProjectForTest: (id) => runProjectActionForTest(completeProject, id),
   reopenProjectForTest: (id) => runProjectActionForTest(reopenProject, id),
 };`)(browserWindow, storage, () => true, { randomUUID: () => "12345678-1234-1234-1234-123456789abc" });
@@ -95,6 +95,12 @@ assert(dashboard.includes(`data-project-month-open="${currentMonth}"`) && dashbo
 assert(harness.monthlyGoalProjects(currentMonth).length === 2, "Current month goal count should include active and completed formal projects");
 assert(harness.monthlyGoalProjects(nextMonth).length === 1, "Monthly goal count should exclude deferred projects");
 assert(harness.taskDurationMinutes(generalTask) === 60 && harness.taskTimeLabel(generalTask) === "10:00–11:00", "Tasks should report their valid start-to-end duration");
+const overlappingTasks = harness.taskTimeConflicts({ date: today, time: "10:45", end_time: "11:15", status: "未完成" });
+assert(overlappingTasks.some((task) => task.id === generalTask.id) && overlappingTasks.some((task) => task.id === phoneTask.id), "Conflict detection should find every overlapping pending task");
+assert(harness.taskTimeConflicts({ date: today, time: "09:00", end_time: "10:00", status: "未完成" }).length === 0, "Adjacent tasks should not be treated as overlapping");
+assert(harness.taskTimeConflicts(generalTask, generalTask.id).length === 0, "Editing a task should exclude the task itself from conflict detection");
+assert(harness.taskInterval(phoneTask).estimated === true, "Legacy tasks without an end time should use the documented 30-minute estimate");
+assert(harness.taskTimeConflicts({ date: today, time: "10:45", end_time: "11:15", status: "已完成" }).length === 0, "Completed candidate tasks should not trigger schedule conflicts");
 
 const phoneList = harness.taskList([phoneTask], "", true);
 assert(phoneList.includes(`data-task-edit=\"${phoneTask.id}\"`), "Phone tasks should remain editable");
@@ -179,6 +185,7 @@ assert(annualSelection.completedProjectIds.has(completedProject.id), "Annual exp
 assert(source.includes('name="task_type"'), "Task forms should preserve phone task type");
 assert(source.includes('name="end_time"') && source.includes("結束時間必須晚於開始時間"), "Task forms should capture and validate an optional end time");
 assert(source.includes('task.end_time = minutesToTime'), "Calendar dragging should preserve a task's duration");
+assert(source.includes('id="taskConflictWarning"') && source.includes("仍要儲存嗎"), "Task forms should warn about schedule conflicts while allowing an explicit override");
 assert(source.includes("window.visualViewport"), "Mobile dialogs should follow the visible viewport when the keyboard opens");
 assert(source.includes('type="month" name="target_month"'), "Project month should use the device month picker");
 assert(source.includes('type="date" name="target_date"'), "Project date should use the device date picker");
@@ -222,19 +229,20 @@ assert(styles.includes("border-left: 1px dashed") && styles.includes(".gantt-hov
 assert(styles.includes(".bottom-nav .active") && styles.includes("background: transparent"), "Mobile navigation should use a single active-state signal");
 assert(source.includes("updateSyncIndicator") && source.includes("indicator.dataset.syncTone = tone"), "Sync feedback should use stable visual states");
 assert(source.includes('showToast("已標記完成", () =>'), "Completing work should provide a short undo opportunity");
+assert(styles.includes(".task-conflict-warning") && styles.includes("border-left: 4px solid var(--amber)"), "Schedule conflicts should use a clear warning treatment");
 
 const index = read("../index.html");
 assert(index.includes("mobile-button-label"), "Mobile top bar should use a compact add label");
 assert(index.includes('href="app-icon.svg"') && index.includes('href="app-icon-192.png"'), "The app should publish browser and home-screen icons");
-assert(index.includes('styles.css?v=26') && index.includes('app.js?v=26'), "The page should request versioned application assets after deployment");
+assert(index.includes('styles.css?v=27') && index.includes('app.js?v=27'), "The page should request versioned application assets after deployment");
 
 const manifest = read("../manifest.json");
 assert(manifest.includes("app-icon-192.png") && manifest.includes("app-icon-512.png") && manifest.includes("maskable"), "The PWA manifest should publish installable app icons");
 
 const worker = read("../service-worker.js");
 new Function(worker);
-assert(worker.includes('teacher-operations-v26'), "PWA cache should be refreshed with network-first application assets");
-assert(worker.includes('"/styles.css?v=26"') && worker.includes('"/app.js?v=26"'), "The PWA shell should cache versioned application assets");
+assert(worker.includes('teacher-operations-v27'), "PWA cache should be refreshed with network-first application assets");
+assert(worker.includes('"/styles.css?v=27"') && worker.includes('"/app.js?v=27"'), "The PWA shell should cache versioned application assets");
 assert(worker.includes("event.respondWith(updateCache.catch"), "Online application assets should load from the network before falling back to cache");
 assert(worker.includes("icon-house.svg") && worker.includes("app-icon-512.png"), "The PWA shell should cache identity and navigation assets");
 assert(source.includes("cloudSavePending"), "Cloud saves made during an active request should remain queued");

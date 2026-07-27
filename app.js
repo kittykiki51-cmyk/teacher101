@@ -410,6 +410,53 @@ function taskTimeLabel(task) {
   return taskDurationMinutes(task) ? `${task.time}–${task.end_time}` : task.time;
 }
 
+function taskInterval(task) {
+  if (!task?.date || !task?.time || task.status === STATUS_COMPLETED) return null;
+  const start = timeToMinutes(task.time);
+  const explicitEnd = timeToMinutes(task.end_time);
+  if (start === null) return null;
+  if (explicitEnd !== null && explicitEnd <= start) return null;
+  return {
+    start,
+    end: explicitEnd === null ? Math.min(1440, start + 30) : explicitEnd,
+    estimated: explicitEnd === null,
+  };
+}
+
+function taskTimeConflicts(candidate, excludedTaskId = "") {
+  const candidateInterval = taskInterval(candidate);
+  if (!candidateInterval) return [];
+  return state.workspace.tasks
+    .filter((task) => task.id !== excludedTaskId && task.date === candidate.date)
+    .filter((task) => {
+      const interval = taskInterval(task);
+      return interval && candidateInterval.start < interval.end && interval.start < candidateInterval.end;
+    })
+    .sort(sortTasks);
+}
+
+function taskConflictDescription(task) {
+  const project = projectById(task.project_id);
+  const interval = taskInterval(task);
+  const time = interval?.estimated ? `${task.time} 起（以 30 分鐘估算）` : taskTimeLabel(task);
+  return `${time}${project ? `｜${project.course || "未命名專案"}` : ""}`;
+}
+
+function updateTaskConflictWarning(formElement) {
+  const warning = formElement?.querySelector("#taskConflictWarning");
+  if (!warning) return [];
+  const candidate = {
+    date: formElement.elements.date?.value || "",
+    time: formElement.elements.time?.value || "",
+    end_time: formElement.elements.end_time?.value || "",
+    status: formElement.elements.status?.value || "未完成",
+  };
+  const conflicts = taskTimeConflicts(candidate, formElement.elements.task_id?.value || "");
+  warning.hidden = conflicts.length === 0;
+  warning.innerHTML = conflicts.length ? `<strong>這個時段已有 ${conflicts.length} 項工作</strong><ul>${conflicts.slice(0, 3).map((task) => `<li><span>${escapeHTML(task.title || "未命名工作")}</span><small>${escapeHTML(taskConflictDescription(task))}</small></li>`).join("")}</ul><p>仍可儲存，但請先確認是否要同時安排。</p>` : "";
+  return conflicts;
+}
+
 function calendarDurationStyle(task) {
   const duration = taskDurationMinutes(task);
   if (!duration) return "";
@@ -2628,6 +2675,7 @@ function openTaskDialog(task = null, projectId = "") {
       <label><span>工作內容</span><input class="search-input" name="title" required value="${escapeHTML(task?.title || "")}"></label>
       <label><span>日期</span><input class="search-input" type="date" name="date" value="${escapeHTML(task?.date || todayISO())}" required></label>
       <div class="two-col"><label><span>開始時間</span><input class="search-input" type="time" name="time" value="${escapeHTML(task?.time || "")}"></label><label><span>結束時間</span><input class="search-input" type="time" name="end_time" value="${escapeHTML(task?.end_time || "")}"></label></div>
+      <div class="task-conflict-warning" id="taskConflictWarning" role="alert" aria-live="polite" hidden></div>
       <div class="two-col">
         <label><span>狀態</span><select class="select" name="status">${["未完成", "等待中", "已完成"].map((value) => `<option ${String(task?.status || "未完成") === value ? "selected" : ""}>${value}</option>`).join("")}</select></label>
         <label><span>提醒</span><select class="select" name="reminder_minutes">${[["", "不提醒"], ["0", "準時提醒"], ["10", "提前 10 分鐘"], ["60", "提前 1 小時"], ["1440", "提前 1 天"]].map(([value, label]) => `<option value="${value}" ${String(task?.reminder_minutes ?? "") === value ? "selected" : ""}>${label}</option>`).join("")}</select></label>
@@ -2640,7 +2688,10 @@ function openTaskDialog(task = null, projectId = "") {
     </form></div>`;
   layer.querySelectorAll("[data-close-modal]").forEach((button) => button.addEventListener("click", closeModal));
   layer.querySelector("[data-task-delete]")?.addEventListener("click", (event) => deleteTask(event.currentTarget.dataset.taskDelete));
-  $("#taskForm").addEventListener("submit", saveTaskFromForm);
+  const taskForm = $("#taskForm");
+  taskForm.addEventListener("submit", saveTaskFromForm);
+  ["date", "time", "end_time", "status"].forEach((name) => taskForm.elements[name]?.addEventListener("input", () => updateTaskConflictWarning(taskForm)));
+  updateTaskConflictWarning(taskForm);
   setupModalViewport(layer);
 }
 
@@ -2659,6 +2710,13 @@ function saveTaskFromForm(event) {
     showToast("結束時間必須晚於開始時間");
     return;
   }
+  const conflicts = taskTimeConflicts({
+    date: String(form.get("date") || ""),
+    time: startTime,
+    end_time: endTime,
+    status: String(form.get("status") || "未完成"),
+  }, taskId);
+  if (conflicts.length && !confirm(`這個時段與 ${conflicts.length} 項工作重疊，仍要儲存嗎？`)) return;
   const task = state.workspace.tasks.find((item) => item.id === taskId) || { id: uid("task"), project_id: String(form.get("project_id") || ""), created_at: new Date().toISOString().slice(0, 19), task_type: taskType, phone_status: taskType === TASK_TYPE_PHONE ? "待聯繫" : "" };
   const wasCompleted = task.status === STATUS_COMPLETED;
   Object.assign(task, { title: String(form.get("title") || "").trim(), date: String(form.get("date") || ""), time: startTime, end_time: endTime, status: String(form.get("status") || "未完成"), project_id: String(form.get("project_id") || ""), task_type: taskType, reminder_minutes: String(form.get("reminder_minutes") || ""), recurrence: String(form.get("recurrence") || "none"), recurrence_series_id: task.recurrence_series_id || task.id, note: String(form.get("note") || "").trim(), linked_checklist_item_id: String(form.get("check_item_id") || task.linked_checklist_item_id || ""), updated_at: new Date().toISOString() });
