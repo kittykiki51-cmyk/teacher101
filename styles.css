@@ -444,7 +444,7 @@ body[data-page="projectDetail"] .content {
 }
 
 .goal-head {
-  grid-column: 1;
+  grid-column: 1 / -1;
   display: flex;
   justify-content: space-between;
   align-items: start;
@@ -478,11 +478,75 @@ body[data-page="projectDetail"] .content {
 }
 
 .goal-summary {
-  grid-column: 1;
   margin: 5px 0 0;
   color: var(--muted);
   font-size: 13px;
   font-weight: 600;
+}
+
+.monthly-target-grid {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+  margin-top: 13px;
+}
+
+.monthly-target-item {
+  min-width: 0;
+  min-height: 66px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--primary);
+  border-radius: 6px;
+  background: var(--surface-alt);
+  color: var(--text);
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.monthly-target-item:hover {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.monthly-target-item.met {
+  border-left-color: var(--green);
+}
+
+.monthly-target-item.short {
+  border-left-color: var(--amber);
+}
+
+.monthly-target-copy,
+.monthly-target-count {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.monthly-target-copy strong {
+  overflow-wrap: anywhere;
+  font-size: 14px;
+}
+
+.monthly-target-copy small,
+.monthly-target-count small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.monthly-target-count {
+  flex: 0 0 auto;
+  justify-items: end;
+}
+
+.monthly-target-count b {
+  color: var(--primary);
+  font-size: 18px;
 }
 
 .home-body {
@@ -622,6 +686,31 @@ body[data-page="projectDetail"] .content {
 .home-task-row p {
   margin: 2px 0 0;
   font-size: 12px;
+}
+
+.home-task-main {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.home-task-project-link {
+  width: fit-content;
+  max-width: 100%;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+  color: var(--primary);
+  padding: 1px 0;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-task-project-link:hover {
+  text-decoration: underline;
 }
 
 .home-task-actions {
@@ -877,7 +966,7 @@ body[data-page="projectDetail"] .content {
 
 .project-filters {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) 110px 100px;
+  grid-template-columns: minmax(220px, 1fr) 110px 100px 140px;
   gap: 8px;
   margin-bottom: 12px;
   border: 0;
@@ -2432,6 +2521,7 @@ button.day-cell:hover {
 
 .week-time-cell {
   position: relative;
+  height: 68px;
   min-height: 68px;
   display: grid;
   align-content: start;
@@ -2451,6 +2541,21 @@ button.day-cell:hover {
   font-size: 11px;
 }
 
+.week-event.duration-event,
+.agenda-event.duration-event {
+  position: absolute;
+  top: var(--event-top);
+  right: 4px;
+  left: 4px;
+  z-index: 2;
+  height: var(--event-height);
+  min-height: 28px;
+  align-content: start;
+  overflow: hidden;
+  white-space: normal;
+  box-shadow: 0 3px 10px rgba(28, 43, 54, 0.12);
+}
+
 .day-agenda {
   overflow: hidden;
   border: 1px solid var(--border);
@@ -2467,6 +2572,7 @@ button.day-cell:hover {
 }
 
 .hour-row {
+  height: 68px;
   min-height: 68px;
 }
 
@@ -2981,6 +3087,25 @@ button.day-cell:hover {
     margin-bottom: 10px;
   }
 
+  .monthly-target-grid {
+    grid-template-columns: 1fr;
+    gap: 7px;
+    margin-top: 10px;
+  }
+
+  .monthly-target-item {
+    min-height: 58px;
+    padding: 8px 10px;
+  }
+
+  .monthly-target-copy strong {
+    font-size: 13px;
+  }
+
+  .monthly-target-count b {
+    font-size: 16px;
+  }
+
   .today-work-panel {
     border-top-width: 2px;
   }
@@ -3074,6 +3199,10 @@ button.day-cell:hover {
   }
 
   .project-filters .search-input {
+    grid-column: 1 / -1;
+  }
+
+  #projectMonthFilter {
     grid-column: 1 / -1;
   }
 

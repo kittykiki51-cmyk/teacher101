@@ -39,6 +39,7 @@ let state = {
   query: "",
   projectRoleFilter: "全部",
   projectModeFilter: "全部類型",
+  projectMonthFilter: "全部月份",
   projectStatusFilter: "active",
   projectView: "cards",
   projectGanttMonths: 6,
@@ -380,6 +381,44 @@ function monthKey(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 }
 
+function offsetMonthKey(offset, baseDate = new Date()) {
+  return monthKey(new Date(baseDate.getFullYear(), baseDate.getMonth() + offset, 1));
+}
+
+function timeToMinutes(value) {
+  const match = String(value || "").match(/^(\d{2}):(\d{2})$/);
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (hours > 23 || minutes > 59) return null;
+  return (hours * 60) + minutes;
+}
+
+function minutesToTime(totalMinutes) {
+  const safeMinutes = Math.max(0, Math.min(1439, Number(totalMinutes) || 0));
+  return `${String(Math.floor(safeMinutes / 60)).padStart(2, "0")}:${String(safeMinutes % 60).padStart(2, "0")}`;
+}
+
+function taskDurationMinutes(task) {
+  const start = timeToMinutes(task?.time);
+  const end = timeToMinutes(task?.end_time);
+  return start !== null && end !== null && end > start ? end - start : 0;
+}
+
+function taskTimeLabel(task) {
+  if (!task?.time) return "全天";
+  return taskDurationMinutes(task) ? `${task.time}–${task.end_time}` : task.time;
+}
+
+function calendarDurationStyle(task) {
+  const duration = taskDurationMinutes(task);
+  if (!duration) return "";
+  const height = Math.round(Math.max(28, Math.min(204, (duration / 60) * 68 - 4)));
+  const start = timeToMinutes(task.time);
+  const top = start === null ? 0 : Math.round(((start % 60) / 60) * 68);
+  return `;--event-height:${height}px;--event-top:${top}px`;
+}
+
 function projectById(id) {
   return state.workspace.projects.find((project) => project.id === id);
 }
@@ -612,7 +651,7 @@ function renderGlobalSearch() {
     if (includes(project.teacher || "", project.course || "", project.current_stage || "")) results.push({ type: "專案", title: project.course || "未命名專案", detail: project.teacher || "", project_id: project.id });
   });
   state.workspace.tasks.forEach((task) => {
-    if (includes(task.title || "", task.note || "", projectById(task.project_id)?.course || "")) results.push({ type: "工作", title: task.title || "未命名工作", detail: `${task.date || "未排日期"} ${task.time || ""}`, task_id: task.id });
+    if (includes(task.title || "", task.note || "", projectById(task.project_id)?.course || "")) results.push({ type: "工作", title: task.title || "未命名工作", detail: `${task.date || "未排日期"} ${taskTimeLabel(task)}`, task_id: task.id });
   });
   state.workspace.project_messages.forEach((message) => {
     if (includes(message.text || "")) results.push({ type: "留言", title: message.text || "", detail: projectById(message.project_id)?.course || "", project_id: message.project_id });
@@ -631,13 +670,9 @@ function renderGlobalSearch() {
 
 function renderDashboard() {
   const currentMonth = monthKey(new Date());
-  const targetProjects = state.workspace.projects
-    .filter((project) => project.target_month === currentMonth && project.role === "正式")
-    .sort((a, b) => `${a.target_date || "9999-12-31"} ${a.course || ""}`.localeCompare(`${b.target_date || "9999-12-31"} ${b.course || ""}`, "zh-Hant"));
-  const launched = targetProjects.filter((project) => ["已上架", "已完成"].includes(project.status) || project.current_stage === "已完成");
-  const inProgress = targetProjects.filter((project) => !launched.includes(project));
+  const nextMonth = offsetMonthKey(1);
+  const targetProjects = monthlyGoalProjects(currentMonth);
   const monthGoal = Number(state.workspace.settings.monthly_goal ?? 2);
-  const remaining = Math.max(0, monthGoal - launched.length);
   const today = new Date();
   const tasks = todayTasks().slice(0, 8);
   return `
@@ -645,20 +680,19 @@ function renderDashboard() {
     <div class="desktop-page-title">
       <div>
         <h2>${escapeHTML(monthLabel(currentMonth))}營運首頁</h2>
-        <p class="muted">早上打開先看本月上架目標、今日電話聯繫與今日工作。</p>
+        <p class="muted">早上打開先看本月與下月正式專案目標、今日電話聯繫與今日工作。</p>
       </div>
       <button class="primary-button" data-new-project>新增課程專案</button>
     </div>
     <section class="goal-card">
       <div class="goal-head">
-        <h3>本月課程上架目標</h3>
+        <div><h3>每月正式專案目標</h3><p class="goal-summary">每月安排 ${monthGoal} 門正式課程，暫緩與已放棄專案不列入。</p></div>
         <button class="ghost-button" data-page="settings">調整目標</button>
       </div>
-      <div class="goal-number-row">
-        <strong>${monthGoal}</strong>
-        <span>門課程</span>
+      <div class="monthly-target-grid">
+        ${monthlyTargetSummary(currentMonth, "本月", monthGoal)}
+        ${monthlyTargetSummary(nextMonth, "下月", monthGoal)}
       </div>
-      <p class="goal-summary">本月目標：${monthGoal} 門｜已完成：${launched.length} 門｜進行中：${inProgress.length} 門｜尚需完成：${remaining} 門</p>
     </section>
     <div class="home-body">
       <section class="home-panel formal-panel">
@@ -684,6 +718,24 @@ function renderDashboard() {
     </div>
     </div>
   `;
+}
+
+function monthlyGoalProjects(targetMonth) {
+  return state.workspace.projects
+    .filter((project) => project.target_month === targetMonth && project.role === ROLE_FORMAL && !projectDeferred(project))
+    .sort((a, b) => `${a.target_date || "9999-12-31"} ${a.course || ""}`.localeCompare(`${b.target_date || "9999-12-31"} ${b.course || ""}`, "zh-Hant"));
+}
+
+function monthlyTargetSummary(targetMonth, label, goal) {
+  const projects = monthlyGoalProjects(targetMonth);
+  const completed = projects.filter(projectFinished).length;
+  const active = projects.length - completed;
+  const remaining = Math.max(0, goal - projects.length);
+  const met = remaining === 0;
+  return `<button type="button" class="monthly-target-item ${met ? "met" : "short"}" data-project-month-open="${escapeHTML(targetMonth)}">
+    <span class="monthly-target-copy"><strong>${escapeHTML(label)}正式專案</strong><small>${escapeHTML(monthLabel(targetMonth))}｜進行中 ${active}｜已完成 ${completed}</small></span>
+    <span class="monthly-target-count"><b>${projects.length} / ${goal}</b><small>${met ? "已達標" : `尚缺 ${remaining} 門`}</small></span>
+  </button>`;
 }
 
 function monthLabel(key) {
@@ -733,12 +785,15 @@ function homeTaskRows(tasks, emptyText) {
     return `
       <div class="home-task-row">
         <button type="button" class="task-dot mobile-task-complete ${statusTone}" data-complete="${escapeHTML(task.id)}" aria-label="完成 ${escapeHTML(task.title || "未命名工作")}">○</button>
-        <button type="button" class="mobile-task-content" data-task-edit="${escapeHTML(task.id)}">
-          <strong>${escapeHTML(task.title || "未命名工作")}</strong>
-          <p class="muted">截止：${humanDate(task.date)} ${escapeHTML(task.time || "")}${project ? `｜${escapeHTML(project.course || "")}` : ""}</p>
-        </button>
+        <div class="home-task-main">
+          <button type="button" class="mobile-task-content" data-task-edit="${escapeHTML(task.id)}">
+            <strong>${escapeHTML(task.title || "未命名工作")}</strong>
+            <p class="muted">時間：${humanDate(task.date)} ${escapeHTML(taskTimeLabel(task))}</p>
+          </button>
+          ${project ? `<button type="button" class="home-task-project-link" data-project-open="${escapeHTML(project.id)}">專案：${escapeHTML(project.course || "未命名專案")} <span aria-hidden="true">→</span></button>` : ""}
+        </div>
         <div class="home-task-actions"><button class="small-button" data-complete="${escapeHTML(task.id)}">完成</button><button class="small-button" data-task-edit="${escapeHTML(task.id)}">編輯</button></div>
-        ${taskOverflowMenu(task, { postpone: true })}
+        ${taskOverflowMenu(task, { postpone: true, goToProject: Boolean(project) })}
       </div>
     `;
   }).join("");
@@ -784,12 +839,18 @@ function metric(label, value, note) {
 function renderProjects() {
   const query = state.query.trim().toLowerCase();
   const currentMonth = monthKey(new Date());
+  const monthOptions = [...new Set([
+    currentMonth,
+    offsetMonthKey(1),
+    ...state.workspace.projects.map((project) => project.target_month).filter(Boolean),
+  ])].sort();
   const filteredProjects = state.workspace.projects.filter((project) => {
     const haystack = `${project.teacher || ""} ${project.course || ""} ${(project.tags || []).join(" ")}`.toLowerCase();
     const mode = project.mode === "live" ? "直播" : "錄播";
     return (!query || haystack.includes(query))
       && (state.projectRoleFilter === "全部" || project.role === state.projectRoleFilter)
-      && (state.projectModeFilter === "全部類型" || mode === state.projectModeFilter);
+      && (state.projectModeFilter === "全部類型" || mode === state.projectModeFilter)
+      && (state.projectMonthFilter === "全部月份" || project.target_month === state.projectMonthFilter);
   });
   const activeCount = filteredProjects.filter((project) => !projectFinished(project)).length;
   const completedCount = filteredProjects.length - activeCount;
@@ -826,6 +887,10 @@ function renderProjects() {
       </select>
       <select class="select" id="projectModeFilter" aria-label="類型篩選">
         ${["全部類型", "錄播", "直播"].map((value) => `<option ${state.projectModeFilter === value ? "selected" : ""}>${value}</option>`).join("")}
+      </select>
+      <select class="select" id="projectMonthFilter" aria-label="目標月份篩選">
+        <option ${state.projectMonthFilter === "全部月份" ? "selected" : ""}>全部月份</option>
+        ${monthOptions.map((value) => `<option value="${escapeHTML(value)}" ${state.projectMonthFilter === value ? "selected" : ""}>${escapeHTML(monthLabel(value))}</option>`).join("")}
       </select>
     </div>
     <div class="project-view-toolbar">
@@ -1262,7 +1327,7 @@ function renderProjectTask(task) {
   return `<div class="compact-task-row">
     <input type="checkbox" data-task-select="${escapeHTML(task.id)}" ${selected ? "checked" : ""} aria-label="選取工作">
     <button type="button" class="mobile-project-task-complete mobile-task-complete" data-complete="${escapeHTML(task.id)}" aria-label="完成 ${escapeHTML(task.title || "未命名工作")}">○</button>
-    <button type="button" class="compact-task-content mobile-task-content" data-task-edit="${escapeHTML(task.id)}"><strong class="${task.status === STATUS_WAITING ? "amber-text" : ""}">${status}　${escapeHTML(task.title || "未命名工作")}</strong><small>${humanDate(task.date)} ${escapeHTML(task.time || "")}</small></button>
+    <button type="button" class="compact-task-content mobile-task-content" data-task-edit="${escapeHTML(task.id)}"><strong class="${task.status === STATUS_WAITING ? "amber-text" : ""}">${status}　${escapeHTML(task.title || "未命名工作")}</strong><small>${humanDate(task.date)} ${escapeHTML(taskTimeLabel(task))}</small></button>
     <div class="toolbar"><button class="primary-button compact-button" data-complete="${escapeHTML(task.id)}">完成</button><button class="ghost-button compact-button" data-postpone="${escapeHTML(task.id)}">延後</button><button class="ghost-button compact-button" data-task-edit="${escapeHTML(task.id)}">編輯</button></div>
     ${taskOverflowMenu(task, { postpone: true })}
   </div>`;
@@ -1322,7 +1387,7 @@ function taskList(tasks, emptyText, phoneMode = false) {
             <p class="item-title">${escapeHTML(task.title || "未命名工作")}</p>
             <div class="item-meta">
               <span>${humanDate(task.date)}</span>
-              ${task.time ? `<span>${escapeHTML(task.time)}</span>` : ""}
+              <span>${escapeHTML(taskTimeLabel(task))}</span>
               <span>${escapeHTML(project ? project.course : "我的工作")}</span>
               ${task.reminder_minutes !== undefined && task.reminder_minutes !== "" ? `<span>${escapeHTML(reminderLabel(task.reminder_minutes))}</span>` : ""}
               ${task.recurrence && task.recurrence !== "none" ? `<span>${escapeHTML(({ daily: "每天重複", weekly: "每週重複", monthly: "每月重複" })[task.recurrence] || "重複工作")}</span>` : ""}
@@ -1389,7 +1454,8 @@ function calendarTaskKind(task) {
 
 function calendarEvent(task, extraClass = "") {
   const kind = calendarTaskKind(task);
-  return `<button type="button" draggable="true" class="calendar-event ${extraClass} ${task.status === STATUS_COMPLETED ? "completed" : ""}" style="${calendarColorStyle(task)}" data-calendar-task="${escapeHTML(task.id)}" title="${escapeHTML(kind.label)}，拖曳以調整日期或時間"><i class="calendar-event-kind">${escapeHTML(kind.short)}</i><b>${escapeHTML(task.time || "全天")}</b><span>${escapeHTML(task.title || "未命名工作")}</span></button>`;
+  const durationClass = taskDurationMinutes(task) && ["week-event", "agenda-event"].includes(extraClass) ? "duration-event" : "";
+  return `<button type="button" draggable="true" class="calendar-event ${extraClass} ${durationClass} ${task.status === STATUS_COMPLETED ? "completed" : ""}" style="${calendarColorStyle(task)}${calendarDurationStyle(task)}" data-calendar-task="${escapeHTML(task.id)}" title="${escapeHTML(`${kind.label}，${taskTimeLabel(task)}，拖曳以調整日期或時間`)}"><i class="calendar-event-kind">${escapeHTML(kind.short)}</i><b>${escapeHTML(taskTimeLabel(task))}</b><span>${escapeHTML(task.title || "未命名工作")}</span></button>`;
 }
 
 function renderCalendarPanelTask(task) {
@@ -1399,7 +1465,7 @@ function renderCalendarPanelTask(task) {
   return `<article class="calendar-panel-task ${completed ? "completed" : ""}" style="${calendarColorStyle(task)}">
     <div class="calendar-panel-task-main">
       ${completed ? `<span class="calendar-task-color" aria-hidden="true"></span>` : `<button type="button" class="calendar-task-color mobile-task-complete" data-complete="${escapeHTML(task.id)}" aria-label="完成 ${escapeHTML(task.title || "未命名工作")}"></button>`}
-      <button type="button" class="calendar-panel-task-copy mobile-task-content" data-task-edit="${escapeHTML(task.id)}"><p class="calendar-panel-title">${escapeHTML(task.title || "未命名工作")}</p><p class="calendar-panel-meta">${escapeHTML(kind.label)} · ${escapeHTML(task.time || "全天")} · ${escapeHTML(project?.course || "我的工作")}${task.reminder_minutes !== undefined && task.reminder_minutes !== "" ? ` · ${escapeHTML(reminderLabel(task.reminder_minutes))}` : ""}</p>${task.note ? `<p class="calendar-panel-note">${escapeHTML(task.note)}</p>` : ""}</button>
+      <button type="button" class="calendar-panel-task-copy mobile-task-content" data-task-edit="${escapeHTML(task.id)}"><p class="calendar-panel-title">${escapeHTML(task.title || "未命名工作")}</p><p class="calendar-panel-meta">${escapeHTML(kind.label)} · ${escapeHTML(taskTimeLabel(task))} · ${escapeHTML(project?.course || "我的工作")}${task.reminder_minutes !== undefined && task.reminder_minutes !== "" ? ` · ${escapeHTML(reminderLabel(task.reminder_minutes))}` : ""}</p>${task.note ? `<p class="calendar-panel-note">${escapeHTML(task.note)}</p>` : ""}</button>
       ${taskOverflowMenu(task, { postpone: !completed, delete: true, goToProject: Boolean(project) })}
     </div>
     <div class="calendar-panel-actions">
@@ -1608,8 +1674,8 @@ function renderSettings() {
           <div class="toolbar"><button class="ghost-button" data-mobile-refresh>重新同步</button>${CLOUD_MODE ? `<button class="danger-button" data-mobile-logout>登出</button>` : ""}</div>
         </div>
         <form class="import-panel goal-settings-panel" id="goalSettingsForm">
-          <h4>本月上架目標</h4>
-          <p class="muted">設定營運首頁要追蹤的課程門數。</p>
+          <h4>每月正式專案目標</h4>
+          <p class="muted">設定營運首頁每個月要追蹤的正式課程門數。</p>
           <div class="goal-setting-row">
             <label for="monthlyGoal">目標門數</label>
             <input class="search-input" id="monthlyGoal" name="monthly_goal" type="number" min="0" max="99" step="1" value="${escapeHTML(data.settings.monthly_goal ?? 2)}" required>
@@ -1735,6 +1801,15 @@ function bindContentEvents() {
   if (roleFilter) roleFilter.addEventListener("change", (event) => { state.projectRoleFilter = event.target.value; render(); });
   const modeFilter = $("#projectModeFilter");
   if (modeFilter) modeFilter.addEventListener("change", (event) => { state.projectModeFilter = event.target.value; render(); });
+  const monthFilter = $("#projectMonthFilter");
+  if (monthFilter) monthFilter.addEventListener("change", (event) => { state.projectMonthFilter = event.target.value; render(); });
+  document.querySelectorAll("[data-project-month-open]").forEach((button) => button.addEventListener("click", () => {
+    state.projectMonthFilter = button.dataset.projectMonthOpen;
+    state.projectRoleFilter = ROLE_FORMAL;
+    state.projectStatusFilter = "active";
+    state.page = "projects";
+    render();
+  }));
   document.querySelectorAll("[data-project-status]").forEach((button) => button.addEventListener("click", () => {
     state.projectStatusFilter = button.dataset.projectStatus;
     if (state.projectTableSort === "target_date") state.projectTableSortDirection = state.projectStatusFilter === "completed" ? "desc" : "asc";
@@ -1959,9 +2034,16 @@ function bindContentEvents() {
       event.preventDefault();
       const task = state.workspace.tasks.find((item) => item.id === event.dataTransfer.getData("text/task-id"));
       if (!task) return;
+      const duration = taskDurationMinutes(task);
       task.date = target.dataset.calendarDrop;
-      if (target.dataset.dropTime) task.time = target.dataset.dropTime;
-      if (target.dataset.dropAllDay !== undefined) task.time = "";
+      if (target.dataset.dropTime) {
+        task.time = target.dataset.dropTime;
+        if (duration) task.end_time = minutesToTime(timeToMinutes(task.time) + duration);
+      }
+      if (target.dataset.dropAllDay !== undefined) {
+        task.time = "";
+        task.end_time = "";
+      }
       task.updated_at = new Date().toISOString();
       state.selectedCalendarDate = task.date;
       saveWorkspace(); showToast("工作時間已調整"); render();
@@ -2027,10 +2109,10 @@ function csvCell(value) {
 }
 
 function exportTasksCSV() {
-  const header = ["日期", "時間", "工作內容", "課程專案", "狀態", "提醒分鐘", "備註"];
+  const header = ["日期", "開始時間", "結束時間", "工作內容", "課程專案", "狀態", "提醒分鐘", "備註"];
   const rows = state.workspace.tasks.slice().sort(sortTasks).map((task) => {
     const project = projectById(task.project_id);
-    return [task.date, task.time, task.title, project?.course || "", task.status, task.reminder_minutes ?? "", task.note || ""];
+    return [task.date, task.time, task.end_time || "", task.title, project?.course || "", task.status, task.reminder_minutes ?? "", task.note || ""];
   });
   const csv = `\ufeff${[header, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n")}`;
   const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
@@ -2544,7 +2626,8 @@ function openTaskDialog(task = null, projectId = "") {
     <div class="modal-header"><h3>${task?.id ? (isPhoneTask ? "編輯電話聯繫" : "編輯工作") : (isPhoneTask ? "新增電話聯繫" : "新增工作排程")}</h3><button class="icon-button" data-close-modal aria-label="關閉">×</button></div>
     <form class="form-grid" id="taskForm" autocomplete="off">
       <label><span>工作內容</span><input class="search-input" name="title" required value="${escapeHTML(task?.title || "")}"></label>
-      <div class="two-col"><label><span>日期</span><input class="search-input" type="date" name="date" value="${escapeHTML(task?.date || todayISO())}" required></label><label><span>時間</span><input class="search-input" type="time" name="time" value="${escapeHTML(task?.time || "")}"></label></div>
+      <label><span>日期</span><input class="search-input" type="date" name="date" value="${escapeHTML(task?.date || todayISO())}" required></label>
+      <div class="two-col"><label><span>開始時間</span><input class="search-input" type="time" name="time" value="${escapeHTML(task?.time || "")}"></label><label><span>結束時間</span><input class="search-input" type="time" name="end_time" value="${escapeHTML(task?.end_time || "")}"></label></div>
       <div class="two-col">
         <label><span>狀態</span><select class="select" name="status">${["未完成", "等待中", "已完成"].map((value) => `<option ${String(task?.status || "未完成") === value ? "selected" : ""}>${value}</option>`).join("")}</select></label>
         <label><span>提醒</span><select class="select" name="reminder_minutes">${[["", "不提醒"], ["0", "準時提醒"], ["10", "提前 10 分鐘"], ["60", "提前 1 小時"], ["1440", "提前 1 天"]].map(([value, label]) => `<option value="${value}" ${String(task?.reminder_minutes ?? "") === value ? "selected" : ""}>${label}</option>`).join("")}</select></label>
@@ -2566,9 +2649,19 @@ function saveTaskFromForm(event) {
   const form = new FormData(event.currentTarget);
   const taskId = String(form.get("task_id") || "");
   const taskType = String(form.get("task_type") || "一般工作");
+  const startTime = String(form.get("time") || "");
+  const endTime = String(form.get("end_time") || "");
+  if (endTime && !startTime) {
+    showToast("請先設定開始時間");
+    return;
+  }
+  if (startTime && endTime && timeToMinutes(endTime) <= timeToMinutes(startTime)) {
+    showToast("結束時間必須晚於開始時間");
+    return;
+  }
   const task = state.workspace.tasks.find((item) => item.id === taskId) || { id: uid("task"), project_id: String(form.get("project_id") || ""), created_at: new Date().toISOString().slice(0, 19), task_type: taskType, phone_status: taskType === TASK_TYPE_PHONE ? "待聯繫" : "" };
   const wasCompleted = task.status === STATUS_COMPLETED;
-  Object.assign(task, { title: String(form.get("title") || "").trim(), date: String(form.get("date") || ""), time: String(form.get("time") || ""), status: String(form.get("status") || "未完成"), project_id: String(form.get("project_id") || ""), task_type: taskType, reminder_minutes: String(form.get("reminder_minutes") || ""), recurrence: String(form.get("recurrence") || "none"), recurrence_series_id: task.recurrence_series_id || task.id, note: String(form.get("note") || "").trim(), linked_checklist_item_id: String(form.get("check_item_id") || task.linked_checklist_item_id || ""), updated_at: new Date().toISOString() });
+  Object.assign(task, { title: String(form.get("title") || "").trim(), date: String(form.get("date") || ""), time: startTime, end_time: endTime, status: String(form.get("status") || "未完成"), project_id: String(form.get("project_id") || ""), task_type: taskType, reminder_minutes: String(form.get("reminder_minutes") || ""), recurrence: String(form.get("recurrence") || "none"), recurrence_series_id: task.recurrence_series_id || task.id, note: String(form.get("note") || "").trim(), linked_checklist_item_id: String(form.get("check_item_id") || task.linked_checklist_item_id || ""), updated_at: new Date().toISOString() });
   if (!taskId) state.workspace.tasks.push(task);
   if (!wasCompleted && task.status === STATUS_COMPLETED) completeTask(task);
   if (task.linked_checklist_item_id) {

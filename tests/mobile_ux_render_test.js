@@ -23,15 +23,17 @@ function runProjectActionForTest(action, id) {
   try { action(id); } finally { showToast = originalToast; render = originalRender; saveWorkspace = originalSave; }
 }
 return {
-  state, todayISO, monthKey, renderDashboard, renderProjects, renderProjectDetail, renderSettings, renderCalendar,
+  state, todayISO, monthKey, offsetMonthKey, renderDashboard, renderProjects, renderProjectDetail, renderSettings, renderCalendar,
   projectMilestone, projectFinished, projectGanttSchedule, projectGanttPriority, projectGanttTooltip, taskList,
   projectCompletionSummary, archiveYearSelection, notificationSettingsState, validEmailAddress,
+  monthlyGoalProjects, taskDurationMinutes, taskTimeLabel,
   completeProjectForTest: (id) => runProjectActionForTest(completeProject, id),
   reopenProjectForTest: (id) => runProjectActionForTest(reopenProject, id),
 };`)(browserWindow, storage, () => true, { randomUUID: () => "12345678-1234-1234-1234-123456789abc" });
 
 const today = harness.todayISO();
 const currentMonth = harness.monthKey(new Date());
+const nextMonth = harness.offsetMonthKey(1);
 const project = {
   id: "project-mobile",
   teacher: "Mobile Teacher",
@@ -55,12 +57,25 @@ const completedProject = {
   status: "已完成",
   completed_date: today,
 };
-const generalTask = { id: "task-mobile", project_id: project.id, title: "Today task", date: today, time: "10:00", status: "未完成", task_type: "一般工作" };
+const nextProject = {
+  ...project,
+  id: "project-next",
+  teacher: "Next Teacher",
+  course: "Next Course",
+  target_month: nextMonth,
+};
+const deferredNextProject = {
+  ...nextProject,
+  id: "project-next-deferred",
+  course: "Deferred Next Course",
+  cooperation_status: "暫緩",
+};
+const generalTask = { id: "task-mobile", project_id: project.id, title: "Today task", date: today, time: "10:00", end_time: "11:00", status: "未完成", task_type: "一般工作" };
 const phoneTask = { id: "phone-mobile", project_id: project.id, title: "Phone task", date: today, time: "11:00", status: "未完成", task_type: "電話聯繫", phone_status: "待聯繫" };
 
 harness.state.workspace = {
   settings: { monthly_goal: 2 },
-  projects: [project, completedProject],
+  projects: [project, completedProject, nextProject, deferredNextProject],
   tasks: [generalTask, phoneTask],
   checklists: [{ id: "group-mobile", project_id: project.id, name: "Launch", items: [{ id: "check-mobile", title: "Final review", done: false }] }],
   progress_logs: [], project_messages: [], history: [], archives: [], deleted_ids: {},
@@ -75,6 +90,11 @@ assert(dashboard.includes(`data-task-edit=\"${generalTask.id}\"`), "Today's work
 assert(dashboard.includes("mobile-task-complete"), "Mobile tasks should provide a one-tap completion control");
 assert(dashboard.includes("task-overflow"), "Secondary mobile task actions should use an overflow menu");
 assert(dashboard.includes("empty-state") || dashboard.includes("home-task-row"), "Dashboard sections should provide content or a guided empty state");
+assert(dashboard.includes(`data-project-open="${project.id}"`) && dashboard.includes("專案：Mobile Course"), "Today's work should link directly to its course project");
+assert(dashboard.includes(`data-project-month-open="${currentMonth}"`) && dashboard.includes(`data-project-month-open="${nextMonth}"`), "Dashboard should provide current and next month project goal shortcuts");
+assert(harness.monthlyGoalProjects(currentMonth).length === 2, "Current month goal count should include active and completed formal projects");
+assert(harness.monthlyGoalProjects(nextMonth).length === 1, "Monthly goal count should exclude deferred projects");
+assert(harness.taskDurationMinutes(generalTask) === 60 && harness.taskTimeLabel(generalTask) === "10:00–11:00", "Tasks should report their valid start-to-end duration");
 
 const phoneList = harness.taskList([phoneTask], "", true);
 assert(phoneList.includes(`data-task-edit=\"${phoneTask.id}\"`), "Phone tasks should remain editable");
@@ -83,6 +103,11 @@ const cardProjects = harness.renderProjects();
 assert(cardProjects.includes('data-project-view="cards"') && cardProjects.includes('data-project-view="table"') && cardProjects.includes('data-project-view="gantt"'), "Project page should switch between card, summary, and Gantt views");
 assert(cardProjects.includes('data-project-status="active"') && cardProjects.includes('data-project-status="completed"'), "Project page should separate active and completed projects");
 assert(cardProjects.includes("Mobile Course") && !cardProjects.includes("Completed Course"), "Completed projects should stay hidden from the default active view");
+assert(cardProjects.includes('id="projectMonthFilter"'), "Project page should provide a target-month filter");
+harness.state.projectMonthFilter = nextMonth;
+const nextMonthProjects = harness.renderProjects();
+assert(nextMonthProjects.includes("Next Course") && !nextMonthProjects.includes("Mobile Course"), "Month filter should show only projects from the selected target month");
+harness.state.projectMonthFilter = "全部月份";
 assert(harness.projectFinished(project) === false && harness.projectFinished(completedProject) === true, "Project visibility should depend on project status instead of task completion");
 harness.completeProjectForTest(project.id);
 assert(project.status === "已完成" && project.completed_date === today, "Complete project should set project-level status and completion date");
@@ -152,6 +177,8 @@ assert(settings.includes("data-export-year") && settings.includes("data-archive-
 const annualSelection = harness.archiveYearSelection(Number(today.slice(0, 4)));
 assert(annualSelection.completedProjectIds.has(completedProject.id), "Annual export should include completed projects from the selected year");
 assert(source.includes('name="task_type"'), "Task forms should preserve phone task type");
+assert(source.includes('name="end_time"') && source.includes("結束時間必須晚於開始時間"), "Task forms should capture and validate an optional end time");
+assert(source.includes('task.end_time = minutesToTime'), "Calendar dragging should preserve a task's duration");
 assert(source.includes("window.visualViewport"), "Mobile dialogs should follow the visible viewport when the keyboard opens");
 assert(source.includes('type="month" name="target_month"'), "Project month should use the device month picker");
 assert(source.includes('type="date" name="target_date"'), "Project date should use the device date picker");
@@ -167,6 +194,7 @@ const calendar = harness.renderCalendar();
 assert(calendar.includes("mobile-calendar-agenda"), "Calendar should provide an agenda-first mobile view");
 assert(calendar.includes("mobile-date-strip"), "Mobile calendar should provide a seven-day date strip");
 assert(calendar.includes("data-mobile-month-toggle"), "Full month view should remain available on mobile");
+assert(calendar.includes("10:00–11:00"), "Calendar should display a task's start and end time");
 
 const styles = read("../styles.css");
 assert((styles.match(/\{/g) || []).length === (styles.match(/\}/g) || []).length, "CSS braces should remain balanced");
@@ -198,15 +226,15 @@ assert(source.includes('showToast("已標記完成", () =>'), "Completing work s
 const index = read("../index.html");
 assert(index.includes("mobile-button-label"), "Mobile top bar should use a compact add label");
 assert(index.includes('href="app-icon.svg"') && index.includes('href="app-icon-192.png"'), "The app should publish browser and home-screen icons");
-assert(index.includes('styles.css?v=25') && index.includes('app.js?v=25'), "The page should request versioned application assets after deployment");
+assert(index.includes('styles.css?v=26') && index.includes('app.js?v=26'), "The page should request versioned application assets after deployment");
 
 const manifest = read("../manifest.json");
 assert(manifest.includes("app-icon-192.png") && manifest.includes("app-icon-512.png") && manifest.includes("maskable"), "The PWA manifest should publish installable app icons");
 
 const worker = read("../service-worker.js");
 new Function(worker);
-assert(worker.includes('teacher-operations-v25'), "PWA cache should be refreshed with network-first application assets");
-assert(worker.includes('"/styles.css?v=25"') && worker.includes('"/app.js?v=25"'), "The PWA shell should cache versioned application assets");
+assert(worker.includes('teacher-operations-v26'), "PWA cache should be refreshed with network-first application assets");
+assert(worker.includes('"/styles.css?v=26"') && worker.includes('"/app.js?v=26"'), "The PWA shell should cache versioned application assets");
 assert(worker.includes("event.respondWith(updateCache.catch"), "Online application assets should load from the network before falling back to cache");
 assert(worker.includes("icon-house.svg") && worker.includes("app-icon-512.png"), "The PWA shell should cache identity and navigation assets");
 assert(source.includes("cloudSavePending"), "Cloud saves made during an active request should remain queued");
