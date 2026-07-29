@@ -11,7 +11,24 @@ const STATUS_WAITING = "等待中";
 const TASK_TYPE_PHONE = "電話聯繫";
 const ROLE_FORMAL = "正式";
 const ROLE_UNSET = "未設定";
-const STAGE_NAMES = ["講師資料", "課綱與合約", "課程錄製", "影片後製", "課程上架"];
+const STAGE_DEFINITIONS = [
+  { value: "招募老師", progress: 10, label: "10% 招募老師" },
+  { value: "面試中", progress: 15, label: "15% 面試中" },
+  { value: "討論課綱（錄製大綱）", progress: 30, label: "30% 討論課綱（錄製大綱）" },
+  { value: "討論鐘點費（簽約）", progress: 50, label: "50% 討論鐘點費（簽約）" },
+  { value: "完成規格書／規格書撰寫／影音錄製中", progress: 80, label: "80% 完成規格書／規格書撰寫／影音錄製中" },
+  { value: "已班級排課／錄製完成", progress: 90, label: "90% 已班級排課／錄製完成" },
+  { value: "已上架", progress: 100, label: "100% 已上架" },
+];
+const STAGE_NAMES = STAGE_DEFINITIONS.map((stage) => stage.value);
+const LEGACY_STAGE_MAP = {
+  "講師資料": "面試中",
+  "課綱與合約": "討論鐘點費（簽約）",
+  "課程錄製": "完成規格書／規格書撰寫／影音錄製中",
+  "影片後製": "已班級排課／錄製完成",
+  "課程上架": "已班級排課／錄製完成",
+  "已完成": "已上架",
+};
 const WORKSPACE_COLLECTION_FIELDS = ["projects", "tasks", "checklists", "progress_logs", "project_messages", "history", "archives"];
 
 const NAV_ITEMS = [
@@ -795,7 +812,7 @@ function projectSimpleStatus(project) {
   if (["已上架", "已完成"].includes(project.status) || project.current_stage === "已完成") return "已完成";
   if (project.waiting_for || tasks.some((task) => task.status === STATUS_WAITING)) return "需追蹤";
   if (tasks.some((task) => task.date && task.date < todayISO())) return "卡住";
-  if (project.current_stage === "課程上架") return "可上架";
+  if (normalizedStageValue(project) === "已班級排課／錄製完成") return "可上架";
   return "順利";
 }
 
@@ -813,7 +830,7 @@ function homeProjectCards(projects) {
           <h4>${escapeHTML(project.teacher || "未設定老師")}｜${escapeHTML(project.course || "未命名課程")}</h4>
           ${pill(status, tone)}
         </div>
-        <p class="muted">目前階段：${escapeHTML(project.current_stage || "未設定")}</p>
+        <p class="muted">目前階段：${escapeHTML(projectStageDisplay(project))}</p>
         <p class="next-line">下一步行動：${next ? `${humanDate(next.date)}　${escapeHTML(next.title || "未命名工作")}` : "尚未排程　目前沒有未完成工作"}</p>
         ${lastMessage ? `<p class="muted">最後紀錄：${escapeHTML(String(lastMessage).replaceAll("\\n", " ").slice(0, 42))}</p>` : ""}
         <div class="home-project-actions">
@@ -871,7 +888,7 @@ function pipelineColumn(role) {
           <button class="pipeline-item" data-project-open="${escapeHTML(project.id)}">
             <span>${escapeHTML(project.teacher || "未設定老師")}</span>
             <strong>${escapeHTML(project.course || "未命名課程")}</strong>
-            <small>${escapeHTML(project.current_stage || "未設定")} · ${humanDate(project.target_date)}</small>
+            <small>${escapeHTML(projectStageDisplay(project))} · ${humanDate(project.target_date)}</small>
           </button>
         `).join("") || `<p class="muted">沒有專案</p>`}
       </div>
@@ -998,15 +1015,33 @@ function projectStartDate(project) {
   return firstTaskDate || (project.target_month ? `${project.target_month}-01` : "");
 }
 
+function normalizedStageValue(project = {}) {
+  if (["已上架", "已完成"].includes(project.status)) return "已上架";
+  const stage = String(project.current_stage || "");
+  if (STAGE_NAMES.includes(stage)) return stage;
+  if (LEGACY_STAGE_MAP[stage]) return LEGACY_STAGE_MAP[stage];
+  if (/已上架|正式上架/.test(stage)) return "已上架";
+  if (/排課|錄製完成|錄完|後製|剪輯|課程上架/.test(stage)) return "已班級排課／錄製完成";
+  if (/規格|錄製中|課程錄製/.test(stage)) return "完成規格書／規格書撰寫／影音錄製中";
+  if (/鐘點|簽約|合約/.test(stage)) return "討論鐘點費（簽約）";
+  if (/課綱|大綱/.test(stage)) return "討論課綱（錄製大綱）";
+  if (/面試|講師資料/.test(stage)) return "面試中";
+  if (/招募/.test(stage)) return "招募老師";
+  return STAGE_NAMES[0];
+}
+
+function projectStageDefinition(project) {
+  const value = normalizedStageValue(project);
+  return STAGE_DEFINITIONS.find((stage) => stage.value === value) || STAGE_DEFINITIONS[0];
+}
+
+function projectStageDisplay(project) {
+  return projectStageDefinition(project).label;
+}
+
 function projectMilestone(project) {
-  const stage = `${project.current_stage || ""} ${project.status || ""}`;
-  const completedStages = (project.stages || []).filter((item) => item.status === STATUS_COMPLETED).map((item) => item.name || "").join(" ");
-  const context = `${stage} ${completedStages}`;
-  if (projectFinished(project) || /已上架|正式上架/.test(stage)) return { progress: 100, label: "已上架" };
-  if (/排課|錄製完成|錄完|後製|剪輯|課程上架/.test(context)) return { progress: 90, label: "排課／錄製完成" };
-  if (/錄製|開錄|課綱.*完成/.test(context)) return { progress: 80, label: "課綱完成・錄製課程" };
-  if (/課綱|合約/.test(context)) return { progress: 60, label: "初版課綱已討論" };
-  return { progress: 50, label: "已完成面試" };
+  const stage = projectStageDefinition(project);
+  return { progress: stage.progress, label: stage.value };
 }
 
 function projectTableSortValue(project, key) {
@@ -1047,7 +1082,7 @@ function projectSummaryTable(projects, emptyText) {
       <td>${humanDate(projectStartDate(project))}</td>
       <td><span class="project-date-label">${finished ? "完成" : "預計"}</span>${humanDate(endDate)}</td>
       <td><div class="project-progress-cell"><div class="project-progress-copy"><strong>${milestone.progress}%</strong><span>${escapeHTML(milestone.label)}</span></div><div class="project-progress-track" aria-label="${milestone.progress}% ${escapeHTML(milestone.label)}"><span style="--project-progress:${milestone.progress}%"></span></div></div></td>
-      <td>${escapeHTML(project.current_stage || "未設定")}</td>
+      <td>${escapeHTML(projectStageDisplay(project))}</td>
       <td><span class="project-table-next">${next.date ? `${humanDate(next.date)}　` : ""}${escapeHTML(next.title)}</span></td>
       <td>${pill(risk.label, finished ? "gray" : risk.tone)}</td>
       <td><button type="button" class="small-button" data-project-open="${escapeHTML(project.id)}">開啟</button></td>
@@ -1149,7 +1184,7 @@ function projectGanttTooltip(project, milestone) {
   return [
     project.course || "未命名課程",
     `日期：${humanDate(projectStartDate(project))}－${humanDate(project.completed_date || project.target_date)}｜${projectRemainingLabel(project)}`,
-    `目前階段：${project.current_stage || "未設定"}`,
+    `目前階段：${projectStageDisplay(project)}`,
     `里程碑：${milestone.label}`,
     `下一步：${next.date ? `${humanDate(next.date)}　` : ""}${next.title}`,
   ].join("\n");
@@ -1265,7 +1300,7 @@ function projectCards(projects, emptyText) {
           </div>
           ${pill(badge, finished ? "gray" : "")}
         </div>
-        <p class="project-stage-line ${risk.tone}-text">${finished ? "此專案已結束，不再列入待處理工作" : `目前階段：${escapeHTML(project.current_stage || "未設定")}　狀態：${escapeHTML(risk.label)}`}</p>
+        <p class="project-stage-line ${risk.tone}-text">${finished ? "此專案已結束，不再列入待處理工作" : `目前階段：${escapeHTML(projectStageDisplay(project))}　狀態：${escapeHTML(risk.label)}`}</p>
         <p class="project-next-line ${finished ? "muted" : next.date ? "primary-text" : "red-text"}">${finished
           ? `完成日期：${humanDate(project.completed_date || project.target_date)}`
           : `下一步（自動）：${next.date ? humanDate(next.date) : "尚未排程"}　${escapeHTML(next.title)}`}</p>
@@ -1301,7 +1336,7 @@ function renderProjectDetail() {
       <div class="project-summary-main">
         <h2>${escapeHTML(project.teacher || "未設定老師")}｜${escapeHTML(project.course || "未命名課程")}</h2>
         <p class="summary-meta ${cooperation === "需觀察" ? "amber-text" : cooperation === "暫緩" ? "red-text" : "primary-text"}">${escapeHTML(project.target_month || "未設定")}　${escapeHTML(project.role || ROLE_UNSET)}　｜　${mode}${cooperation === "順利" ? "" : `　｜　合作：${escapeHTML(cooperation)}`}</p>
-        <p>預計上架 ${humanDate(project.target_date)}　｜　目前階段 ${escapeHTML(project.current_stage || "未設定")}</p>
+        <p>預計上架 ${humanDate(project.target_date)}　｜　目前階段 ${escapeHTML(projectStageDisplay(project))}</p>
         <p class="summary-next ${finished ? "green-text" : next.date ? "primary-text" : "red-text"}">${finished
           ? `此專案已完成結束｜完成日期 ${humanDate(project.completed_date || project.target_date)}`
           : `下一步（自動）：${next.date ? humanDate(next.date) : "尚未排程"}　${escapeHTML(next.title)}`}</p>
@@ -2425,7 +2460,7 @@ function openProjectDialog(project = null) {
           </div>
           <label>
             <span>目前階段</span>
-            <select class="select" name="stage">${[...STAGE_NAMES, "已上架", "已完成", "已放棄"].map((value) => `<option ${(project?.status === "已完成" ? "已完成" : project?.status === "已上架" ? "已上架" : project?.status === "已放棄" ? "已放棄" : project?.current_stage || STAGE_NAMES[0]) === value ? "selected" : ""}>${value}</option>`).join("")}</select>
+            <select class="select" name="stage">${STAGE_DEFINITIONS.map((stage) => `<option value="${escapeHTML(stage.value)}" ${normalizedStageValue(project || {}) === stage.value ? "selected" : ""}>${escapeHTML(stage.label)}</option>`).join("")}</select>
           </label>
           ${project ? "" : `<label><span>建立時套用檢查清單</span><select class="select" name="template"><option value="">不套用</option>${(state.workspace.checklist_templates || []).map((item) => `<option value="${escapeHTML(item.id)}">${escapeHTML(item.name || "未命名範本")}</option>`).join("")}</select></label>`}
         </section>
@@ -2542,7 +2577,8 @@ function saveProjectFromForm(event) {
     return;
   }
 
-  const stage = String(form.get("stage") || STAGE_NAMES[0]);
+  const requestedStage = String(form.get("stage") || STAGE_NAMES[0]);
+  const stage = STAGE_NAMES.includes(requestedStage) ? requestedStage : STAGE_NAMES[0];
   const existing = projectById(String(form.get("project_id") || ""));
   const project = existing || {
     id: uid("project"), status: "進行中", tags: [], schedule_priority: "自動",
@@ -2560,12 +2596,9 @@ function saveProjectFromForm(event) {
     stages: STAGE_NAMES.map((name, index) => ({ id: project.stages?.[index]?.id || uid("stage"), name, status: index < currentIndex ? STATUS_COMPLETED : index === currentIndex ? "進行中" : "未完成" })),
     last_update: todayISO(),
   });
-  if (["已上架", "已完成"].includes(stage)) {
-    project.status = stage;
+  if (stage === "已上架") {
+    project.status = "已上架";
     project.completed_date ||= todayISO();
-  } else if (stage === "已放棄") {
-    project.status = "已放棄";
-    project.completed_date = "";
   } else {
     project.status = "進行中";
     project.completed_date = "";
@@ -2636,7 +2669,7 @@ function reopenProject(projectId) {
   if (!project || !projectFinished(project)) return;
   project.status = "進行中";
   project.completed_date = "";
-  if (["已完成", "已上架"].includes(project.current_stage)) project.current_stage = "課程上架";
+  if (["已完成", "已上架"].includes(project.current_stage)) project.current_stage = "已班級排課／錄製完成";
   project.last_update = todayISO();
   addHistory(`重新開啟課程專案「${project.course || "未命名專案"}」`, project.id, "project");
   saveWorkspace();

@@ -9,6 +9,8 @@ function assert(condition, message) {
 }
 
 const source = read("../app.js");
+assert(source.includes('label: "10% 招募老師"') && source.includes('label: "100% 已上架"'), "The project form should publish the requested first and final stage labels");
+assert(!source.includes('[...STAGE_NAMES, "已上架", "已完成", "已放棄"]'), "The project-stage selector should contain only the seven requested progress categories");
 const testableSource = source.replace(/\ninitializeApp\(\);\s*$/, "");
 const storage = { getItem: () => null, setItem: () => null, removeItem: () => null };
 const browserWindow = { location: { protocol: "file:" }, INITIAL_WORKSPACE: null };
@@ -25,6 +27,7 @@ function runProjectActionForTest(action, id) {
 return {
   state, todayISO, monthKey, offsetMonthKey, renderDashboard, renderProjects, renderProjectDetail, renderSettings, renderCalendar,
   projectMilestone, projectFinished, projectGanttSchedule, projectGanttPriority, projectGanttTooltip, taskList,
+  normalizedStageValue, projectStageDisplay, STAGE_DEFINITIONS,
   projectCompletionSummary, archiveYearSelection, notificationSettingsState, validEmailAddress,
   monthlyGoalProjects, taskDurationMinutes, taskTimeLabel, taskInterval, taskTimeConflicts,
   completeProjectForTest: (id) => runProjectActionForTest(completeProject, id),
@@ -43,7 +46,7 @@ const project = {
   target_month: currentMonth,
   start_date: today,
   target_date: today,
-  current_stage: "課程錄製",
+  current_stage: "完成規格書／規格書撰寫／影音錄製中",
   status: "進行中",
   cooperation_status: "順利",
   links: { "講師 Gmail": "teacher@gmail.com" },
@@ -53,7 +56,7 @@ const completedProject = {
   id: "project-completed",
   teacher: "Completed Teacher",
   course: "Completed Course",
-  current_stage: "課程上架",
+  current_stage: "已上架",
   status: "已完成",
   completed_date: today,
 };
@@ -121,17 +124,23 @@ assert(generalTask.status === "未完成", "Completing a project should not rewr
 harness.reopenProjectForTest(project.id);
 assert(project.status === "進行中" && project.completed_date === "", "Reopening should return a project to the active view");
 assert(harness.projectMilestone(project).progress === 80, "Course recording should map to the 80 percent milestone");
-assert(harness.projectMilestone({ current_stage: "講師資料", status: "進行中" }).progress === 50, "Teacher preparation should map to the 50 percent milestone");
-assert(harness.projectMilestone({ current_stage: "課綱與合約", status: "進行中" }).progress === 60, "Syllabus discussion should map to the 60 percent milestone");
-assert(harness.projectMilestone({ current_stage: "影片後製", status: "進行中" }).progress === 90, "Completed recording or post-production should map to the 90 percent milestone");
-assert(harness.projectMilestone({ current_stage: "已上架", status: "已上架" }).progress === 100, "Published projects should map to the 100 percent milestone");
+assert(JSON.stringify(harness.STAGE_DEFINITIONS.map((stage) => stage.progress)) === JSON.stringify([10, 15, 30, 50, 80, 90, 100]), "Project stages should use the requested seven progress percentages");
+assert(harness.projectMilestone({ current_stage: "招募老師", status: "進行中" }).progress === 10, "Teacher recruiting should map to 10 percent");
+assert(harness.projectMilestone({ current_stage: "面試中", status: "進行中" }).progress === 15, "Teacher interviews should map to 15 percent");
+assert(harness.projectMilestone({ current_stage: "討論課綱（錄製大綱）", status: "進行中" }).progress === 30, "Syllabus discussion should map to 30 percent");
+assert(harness.projectMilestone({ current_stage: "討論鐘點費（簽約）", status: "進行中" }).progress === 50, "Contract discussion should map to 50 percent");
+assert(harness.projectMilestone({ current_stage: "完成規格書／規格書撰寫／影音錄製中", status: "進行中" }).progress === 80, "Specification and recording work should map to 80 percent");
+assert(harness.projectMilestone({ current_stage: "已班級排課／錄製完成", status: "進行中" }).progress === 90, "Scheduling or completed recording should map to 90 percent");
+assert(harness.projectMilestone({ current_stage: "已上架", status: "已上架" }).progress === 100, "Published projects should map to 100 percent");
+assert(harness.normalizedStageValue({ current_stage: "課程錄製", status: "進行中" }) === "完成規格書／規格書撰寫／影音錄製中", "Legacy recording stages should remain compatible");
+assert(harness.projectStageDisplay({ current_stage: "影片後製", status: "進行中" }) === "90% 已班級排課／錄製完成", "Legacy post-production stages should display the new category");
 const completionSummary = harness.projectCompletionSummary(project.id);
 assert(completionSummary.workTasks.length === 1 && completionSummary.phoneTasks.length === 1 && completionSummary.checklistItems.length === 1, "Project completion should warn about pending work, calls, and checklist items separately");
 harness.state.projectView = "table";
 const summaryProjects = harness.renderProjects();
 assert(summaryProjects.includes("project-summary-table"), "Desktop summary view should render a project table");
 assert(summaryProjects.includes("project-mobile-summary-list"), "Mobile summary view should render a compact project list");
-assert(summaryProjects.includes("80%") && summaryProjects.includes("課綱完成・錄製課程"), "Summary view should pair milestone percentage with its label");
+assert(summaryProjects.includes("80%") && summaryProjects.includes("完成規格書／規格書撰寫／影音錄製中"), "Summary view should pair milestone percentage with its label");
 harness.state.projectStatusFilter = "completed";
 const completedSummary = harness.renderProjects();
 assert(completedSummary.includes("Completed Course") && !completedSummary.includes("Mobile Course"), "Completed view should only display completed projects");
@@ -143,7 +152,7 @@ assert(ganttProjects.includes("project-gantt-grid") && ganttProjects.includes("p
 assert(ganttProjects.includes("今天 ") && ganttProjects.includes("project-gantt-deadline"), "Gantt view should label today and mark visible project deadlines");
 assert(ganttProjects.includes('data-gantt-months="3"') && ganttProjects.includes('data-gantt-months="6"') && ganttProjects.includes('data-gantt-months="12"'), "Gantt view should provide three, six, and twelve month ranges");
 assert(ganttProjects.includes("project-gantt-actual") && ganttProjects.includes("project-gantt-expected"), "Gantt bars should compare actual and expected progress");
-assert(ganttProjects.includes("80%｜課綱完成・錄製課程"), "Gantt rows should explain what each milestone percentage means");
+assert(ganttProjects.includes("80%｜完成規格書／規格書撰寫／影音錄製中"), "Gantt rows should explain what each milestone percentage means");
 assert(ganttProjects.includes("project-gantt-mobile-list") && ganttProjects.includes("project-gantt-mobile-card"), "Mobile Gantt view should use compact schedule cards");
 assert(ganttProjects.includes(`data-project-open="${project.id}"`), "Gantt projects should open their project detail directly");
 assert(ganttProjects.includes('class="project-gantt-row" data-gantt-tooltip=') && ganttProjects.includes("下一步："), "The complete Gantt row should expose a hover summary");
@@ -234,15 +243,15 @@ assert(styles.includes(".task-conflict-warning") && styles.includes("border-left
 const index = read("../index.html");
 assert(index.includes("mobile-button-label"), "Mobile top bar should use a compact add label");
 assert(index.includes('href="app-icon.svg"') && index.includes('href="app-icon-192.png"'), "The app should publish browser and home-screen icons");
-assert(index.includes('styles.css?v=27') && index.includes('app.js?v=27'), "The page should request versioned application assets after deployment");
+assert(index.includes('styles.css?v=28') && index.includes('app.js?v=28'), "The page should request versioned application assets after deployment");
 
 const manifest = read("../manifest.json");
 assert(manifest.includes("app-icon-192.png") && manifest.includes("app-icon-512.png") && manifest.includes("maskable"), "The PWA manifest should publish installable app icons");
 
 const worker = read("../service-worker.js");
 new Function(worker);
-assert(worker.includes('teacher-operations-v27'), "PWA cache should be refreshed with network-first application assets");
-assert(worker.includes('"/styles.css?v=27"') && worker.includes('"/app.js?v=27"'), "The PWA shell should cache versioned application assets");
+assert(worker.includes('teacher-operations-v28'), "PWA cache should be refreshed with network-first application assets");
+assert(worker.includes('"/styles.css?v=28"') && worker.includes('"/app.js?v=28"'), "The PWA shell should cache versioned application assets");
 assert(worker.includes("event.respondWith(updateCache.catch"), "Online application assets should load from the network before falling back to cache");
 assert(worker.includes("icon-house.svg") && worker.includes("app-icon-512.png"), "The PWA shell should cache identity and navigation assets");
 assert(source.includes("cloudSavePending"), "Cloud saves made during an active request should remain queued");
