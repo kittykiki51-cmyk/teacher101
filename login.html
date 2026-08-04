@@ -7,7 +7,7 @@
   <link rel="apple-touch-icon" href="app-icon-192.png">
   <meta name="theme-color" content="#111214">
   <title>登入｜老師專案管理</title>
-  <link rel="stylesheet" href="login.css">
+  <link rel="stylesheet" href="login.css?v=29">
 </head>
 <body>
   <main class="login-page">
@@ -19,7 +19,7 @@
       <form id="loginForm">
         <label for="password">登入密碼</label>
         <div class="password-field">
-          <input id="password" name="password" type="password" autocomplete="current-password" required autofocus>
+          <input id="password" name="password" type="password" autocomplete="current-password" autocapitalize="none" spellcheck="false" enterkeyhint="go" required>
           <button id="togglePassword" type="button" aria-label="顯示密碼" title="顯示密碼">顯示</button>
         </div>
         <p class="error-message" id="errorMessage" role="alert" aria-live="polite"></p>
@@ -28,6 +28,6 @@
       <p class="device-note">登入狀態會安全保留在這台裝置。</p>
     </section>
   </main>
-  <script src="login.js"></script>
+  <script src="login.js?v=29"></script>
 </body>
 </html>

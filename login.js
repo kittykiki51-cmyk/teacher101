@@ -4,6 +4,19 @@ const toggle = document.querySelector("#togglePassword");
 const button = document.querySelector("#loginButton");
 const errorMessage = document.querySelector("#errorMessage");
 
+function resetLoginState(clearPassword = false) {
+  button.disabled = false;
+  button.textContent = "登入";
+  password.type = "password";
+  toggle.textContent = "顯示";
+  toggle.setAttribute("aria-label", "顯示密碼");
+  if (clearPassword) password.value = "";
+}
+
+window.addEventListener("pageshow", (event) => {
+  resetLoginState(event.persisted);
+});
+
 toggle.addEventListener("click", () => {
   const visible = password.type === "text";
   password.type = visible ? "password" : "text";
@@ -30,7 +43,6 @@ form.addEventListener("submit", async (event) => {
     errorMessage.textContent = error.message;
     password.select();
   } finally {
-    button.disabled = false;
-    button.textContent = "登入";
+    resetLoginState(false);
   }
 });

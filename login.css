@@ -71,6 +71,7 @@ label {
 .password-field input {
   min-width: 0;
   height: 44px;
+  font-size: 16px;
   border: 1px solid var(--border);
   border-right: 0;
   border-radius: 6px 0 0 6px;

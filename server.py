@@ -297,7 +297,8 @@ def security_headers(response: Any) -> Any:
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "same-origin"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
-    response.headers["Cache-Control"] = "no-store" if request.path.startswith("/api/") or request.path == "/login" else "no-cache"
+    private_cache_paths = {"/login", "/login.css", "/login.js"}
+    response.headers["Cache-Control"] = "no-store" if request.path.startswith("/api/") or request.path in private_cache_paths else "no-cache"
     return response
 
 

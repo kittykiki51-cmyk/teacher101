@@ -1,9 +1,10 @@
-const CACHE_NAME = "teacher-operations-v28";
+const CACHE_NAME = "teacher-operations-v29";
 const APP_SHELL = [
   "/", "/styles.css?v=28", "/app.js?v=28", "/manifest.json", "/app-icon.svg",
   "/app-icon-192.png", "/app-icon-512.png", "/icon-house.svg", "/icon-folders.svg",
   "/icon-calendar-days.svg", "/icon-settings.svg",
 ];
+const LOGIN_PATHS = new Set(["/login", "/login.css", "/login.js"]);
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)).catch(() => undefined));
@@ -16,7 +17,8 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
-  if (event.request.method !== "GET" || event.request.url.includes("/api/")) return;
+  const url = new URL(event.request.url);
+  if (event.request.method !== "GET" || event.request.url.includes("/api/") || LOGIN_PATHS.has(url.pathname)) return;
   const updateCache = fetch(event.request).then((response) => {
     if (response.ok && !response.url.endsWith("/login") && new URL(event.request.url).origin === self.location.origin) {
       caches.open(CACHE_NAME).then((cache) => cache.put(event.request, response.clone()));

@@ -29,6 +29,10 @@ def workspace_payload() -> dict:
 
 
 client = server.app.test_client()
+for login_path in ("/login", "/login.css?v=29", "/login.js?v=29"):
+    login_response = client.get(login_path)
+    assert login_response.status_code == 200
+    assert login_response.headers["Cache-Control"] == "no-store"
 assert client.get("/api/workspace").status_code == 401
 assert client.post("/api/login", json={"password": "audit-password"}).status_code == 200
 

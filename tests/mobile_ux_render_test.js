@@ -250,10 +250,19 @@ assert(manifest.includes("app-icon-192.png") && manifest.includes("app-icon-512.
 
 const worker = read("../service-worker.js");
 new Function(worker);
-assert(worker.includes('teacher-operations-v28'), "PWA cache should be refreshed with network-first application assets");
+assert(worker.includes('teacher-operations-v29'), "PWA cache should be refreshed after the mobile login fix");
 assert(worker.includes('"/styles.css?v=28"') && worker.includes('"/app.js?v=28"'), "The PWA shell should cache versioned application assets");
 assert(worker.includes("event.respondWith(updateCache.catch"), "Online application assets should load from the network before falling back to cache");
 assert(worker.includes("icon-house.svg") && worker.includes("app-icon-512.png"), "The PWA shell should cache identity and navigation assets");
+assert(worker.includes('LOGIN_PATHS.has(url.pathname)'), "The service worker should leave login documents and assets to the network");
+
+const loginHTML = read("../login.html");
+const loginScript = read("../login.js");
+const loginStyles = read("../login.css");
+assert(!loginHTML.includes("autofocus") && loginHTML.includes('enterkeyhint="go"'), "Mobile login should wait for an explicit tap before opening the keyboard");
+assert(loginHTML.includes('login.css?v=29') && loginHTML.includes('login.js?v=29'), "Login assets should use a fresh deployment version");
+assert(loginScript.includes('window.addEventListener("pageshow"') && loginScript.includes("resetLoginState"), "Restored login pages should reset stale interactive state");
+assert(loginStyles.includes(".password-field input") && loginStyles.includes("font-size: 16px"), "The password field should use a stable mobile input font size");
 assert(source.includes("cloudSavePending"), "Cloud saves made during an active request should remain queued");
 assert(source.includes("scheduleSearchRender"), "Search input should debounce full-page rendering");
 assert(!styles.includes("backdrop-filter: blur(12px)"), "Mobile navigation should avoid expensive live backdrop blur");
