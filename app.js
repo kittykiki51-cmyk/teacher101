@@ -11,7 +11,13 @@ const STATUS_WAITING = "等待中";
 const TASK_TYPE_PHONE = "電話聯繫";
 const ROLE_FORMAL = "正式";
 const ROLE_UNSET = "未設定";
-const CALENDAR_EVENT_TYPES = ["公告", "會議", "重要事項", "錄製／上課"];
+const CALENDAR_EVENT_TYPES = ["要約面試", "線上面試會議", "部門會議"];
+const LEGACY_CALENDAR_EVENT_TYPE_MAP = {
+  "公告": "部門會議",
+  "會議": "部門會議",
+  "重要事項": "部門會議",
+  "錄製／上課": "部門會議",
+};
 const STAGE_DEFINITIONS = [
   { value: "招募老師", progress: 10, label: "10% 招募老師" },
   { value: "面試中", progress: 15, label: "15% 面試中" },
@@ -748,7 +754,7 @@ function renderGlobalSearch() {
     if (includes(task.title || "", task.note || "", projectById(task.project_id)?.course || "")) results.push({ type: "工作", title: task.title || "未命名工作", detail: `${task.date || "未排日期"} ${taskTimeLabel(task)}`, task_id: task.id });
   });
   state.workspace.calendar_events.forEach((event) => {
-    if (includes(event.title || "", event.note || "", event.location || "", event.event_type || "", projectById(event.project_id)?.course || "")) results.push({ type: event.event_type || "重要行程", title: event.title || "未命名行程", detail: `${event.date || "未排日期"} ${calendarImportantTimeLabel(event)}`, calendar_event_id: event.id });
+    if (includes(event.title || "", event.note || "", event.location || "", event.event_type || "", projectById(event.project_id)?.course || "")) results.push({ type: calendarImportantType(event), title: event.title || "未命名行程", detail: `${event.date || "未排日期"} ${calendarImportantTimeLabel(event)}`, calendar_event_id: event.id });
   });
   state.workspace.project_messages.forEach((message) => {
     if (includes(message.text || "")) results.push({ type: "留言", title: message.text || "", detail: projectById(message.project_id)?.course || "", project_id: message.project_id });
@@ -821,7 +827,7 @@ function renderDashboard() {
 
 function renderDashboardImportantEvents(events) {
   return `<section class="home-panel today-events-panel">
-    <div class="panel-title-row"><div><h3>今日重要行程</h3><p class="muted panel-subtitle">公告、會議與重要事項集中顯示，不會混入工作完成清單。</p></div><button class="ghost-button" data-calendar-event-add="${todayISO()}">新增行程</button></div>
+    <div class="panel-title-row"><div><h3>今日重要行程</h3><p class="muted panel-subtitle">面試邀約、線上面試與部門會議集中顯示，不會混入工作完成清單。</p></div><button class="ghost-button" data-calendar-event-add="${todayISO()}">新增行程</button></div>
     <div class="dashboard-event-list">${events.map((event) => {
       const project = projectById(event.project_id);
       return `<button type="button" class="dashboard-event-row" style="${calendarImportantColorStyle(event)}" data-calendar-event-edit="${escapeHTML(event.id)}"><span class="dashboard-event-type">${escapeHTML(calendarImportantType(event))}</span><strong>${escapeHTML(calendarImportantTimeLabel(event))}</strong><span>${escapeHTML(event.title || "未命名行程")}</span>${project ? `<small>${escapeHTML(project.course || "未命名專案")}</small>` : ""}</button>`;
@@ -1563,14 +1569,15 @@ function calendarEventsOnDate(iso) {
 }
 
 const CALENDAR_IMPORTANT_COLORS = {
-  "公告": { color: "#596573", soft: "#f0f3f5", border: "#cfd6dc" },
-  "會議": { color: "#3f5ecf", soft: "#eef1ff", border: "#cbd3fb" },
-  "重要事項": { color: "#ad435c", soft: "#fbeef1", border: "#edc3cd" },
-  "錄製／上課": { color: "#1f7b69", soft: "#e9f6f2", border: "#b9dfd5" },
+  "要約面試": { color: "#ad435c", soft: "#fbeef1", border: "#edc3cd" },
+  "線上面試會議": { color: "#3f5ecf", soft: "#eef1ff", border: "#cbd3fb" },
+  "部門會議": { color: "#1f7b69", soft: "#e9f6f2", border: "#b9dfd5" },
 };
 
 function calendarImportantType(event) {
-  return CALENDAR_EVENT_TYPES.includes(event?.event_type) ? event.event_type : "重要事項";
+  if (!event?.event_type) return CALENDAR_EVENT_TYPES[0];
+  const value = LEGACY_CALENDAR_EVENT_TYPE_MAP[event.event_type] || event.event_type;
+  return CALENDAR_EVENT_TYPES.includes(value) ? value : "部門會議";
 }
 
 function calendarImportantColorStyle(event) {
@@ -2813,7 +2820,7 @@ function openCalendarEventDialog(calendarEventItem = null, selectedDate = "") {
   const targetProjectId = calendarEventItem?.project_id || "";
   layer.hidden = false;
   layer.innerHTML = `<div class="modal-card compact-modal calendar-event-modal" role="dialog" aria-modal="true">
-    <div class="modal-header"><div><h3>${calendarEventItem?.id ? "編輯重要行程" : "新增重要行程"}</h3><p class="muted">公告、會議與重要事項不會混入工作完成清單。</p></div><button class="icon-button" data-close-modal aria-label="關閉">×</button></div>
+    <div class="modal-header"><div><h3>${calendarEventItem?.id ? "編輯重要行程" : "新增重要行程"}</h3><p class="muted">面試邀約、線上面試與部門會議不會混入工作完成清單。</p></div><button class="icon-button" data-close-modal aria-label="關閉">×</button></div>
     <form class="form-grid" id="calendarEventForm" autocomplete="off">
       <div class="two-col"><label><span>分類</span><select class="select" name="event_type">${CALENDAR_EVENT_TYPES.map((value) => `<option ${calendarImportantType(calendarEventItem) === value ? "selected" : ""}>${value}</option>`).join("")}</select></label><label><span>日期</span><input class="search-input" type="date" name="date" value="${escapeHTML(calendarEventItem?.date || selectedDate || state.selectedCalendarDate || todayISO())}" required></label></div>
       <label><span>標題</span><input class="search-input" name="title" required maxlength="160" value="${escapeHTML(calendarEventItem?.title || "")}" placeholder="例如：七月課程排程會議"></label>
@@ -2864,7 +2871,7 @@ function saveCalendarEventFromForm(event) {
   }
   const item = state.workspace.calendar_events.find((entry) => entry.id === eventId) || { id: uid("event"), created_at: new Date().toISOString() };
   Object.assign(item, {
-    event_type: CALENDAR_EVENT_TYPES.includes(String(form.get("event_type"))) ? String(form.get("event_type")) : "重要事項",
+    event_type: CALENDAR_EVENT_TYPES.includes(String(form.get("event_type"))) ? String(form.get("event_type")) : "部門會議",
     title: String(form.get("title") || "").trim(),
     date: String(form.get("date") || ""),
     all_day: allDay,

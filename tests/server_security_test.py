@@ -67,6 +67,8 @@ timed_due = server.due_calendar_events(reminder_workspace, datetime(2026, 8, 11,
 all_day_due = server.due_calendar_events(reminder_workspace, datetime(2026, 8, 11, 9, 0, tzinfo=server.APP_TIMEZONE))
 assert [item["id"] for item in timed_due] == ["timed"]
 assert [item["id"] for item in all_day_due] == ["all-day"]
+assert server.calendar_event_type_label({"event_type": "線上面試會議"}) == "線上面試會議"
+assert server.calendar_event_type_label({"event_type": "會議"}) == "部門會議"
 
 server.login_attempts.clear()
 limited_client = server.app.test_client()

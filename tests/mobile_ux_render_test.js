@@ -75,7 +75,7 @@ const deferredNextProject = {
 };
 const generalTask = { id: "task-mobile", project_id: project.id, title: "Today task", date: today, time: "10:00", end_time: "11:00", status: "未完成", task_type: "一般工作" };
 const phoneTask = { id: "phone-mobile", project_id: project.id, title: "Phone task", date: today, time: "11:00", status: "未完成", task_type: "電話聯繫", phone_status: "待聯繫" };
-const importantEvent = { id: "event-mobile", project_id: project.id, event_type: "會議", title: "Today meeting", date: today, all_day: false, time: "14:00", end_time: "15:00", reminder_minutes: "10", location: "Google Meet" };
+const importantEvent = { id: "event-mobile", project_id: project.id, event_type: "線上面試會議", title: "Today meeting", date: today, all_day: false, time: "14:00", end_time: "15:00", reminder_minutes: "10", location: "Google Meet" };
 
 harness.state.workspace = {
   settings: { monthly_goal: 2 },
@@ -251,15 +251,15 @@ assert(styles.includes(".task-conflict-warning") && styles.includes("border-left
 const index = read("../index.html");
 assert(index.includes("mobile-button-label"), "Mobile top bar should use a compact add label");
 assert(index.includes('href="app-icon.svg"') && index.includes('href="app-icon-192.png"'), "The app should publish browser and home-screen icons");
-assert(index.includes('styles.css?v=30') && index.includes('app.js?v=30'), "The page should request versioned application assets after the important-event update");
+assert(index.includes('styles.css?v=31') && index.includes('app.js?v=31'), "The page should request versioned application assets after the event-category update");
 
 const manifest = read("../manifest.json");
 assert(manifest.includes("app-icon-192.png") && manifest.includes("app-icon-512.png") && manifest.includes("maskable"), "The PWA manifest should publish installable app icons");
 
 const worker = read("../service-worker.js");
 new Function(worker);
-assert(worker.includes('teacher-operations-v30'), "PWA cache should be refreshed after the important-event update");
-assert(worker.includes('"/styles.css?v=30"') && worker.includes('"/app.js?v=30"'), "The PWA shell should cache versioned application assets");
+assert(worker.includes('teacher-operations-v31'), "PWA cache should be refreshed after the event-category update");
+assert(worker.includes('"/styles.css?v=31"') && worker.includes('"/app.js?v=31"'), "The PWA shell should cache versioned application assets");
 assert(worker.includes("event.respondWith(updateCache.catch"), "Online application assets should load from the network before falling back to cache");
 assert(worker.includes("icon-house.svg") && worker.includes("app-icon-512.png"), "The PWA shell should cache identity and navigation assets");
 assert(worker.includes('LOGIN_PATHS.has(url.pathname)'), "The service worker should leave login documents and assets to the network");

@@ -54,6 +54,13 @@ WORKSPACE_LIST_FIELDS = (
     "projects", "tasks", "calendar_events", "checklists", "progress_logs",
     "project_messages", "history", "archives",
 )
+CALENDAR_EVENT_TYPES = {"要約面試", "線上面試會議", "部門會議"}
+LEGACY_CALENDAR_EVENT_TYPE_MAP = {
+    "公告": "部門會議",
+    "會議": "部門會議",
+    "重要事項": "部門會議",
+    "錄製／上課": "部門會議",
+}
 
 login_attempts: dict[str, list[float]] = {}
 login_attempts_lock = threading.Lock()
@@ -504,6 +511,12 @@ def due_calendar_events(workspace: dict[str, Any], now: datetime) -> list[dict[s
     return due
 
 
+def calendar_event_type_label(event: dict[str, Any]) -> str:
+    raw_type = str(event.get("event_type", ""))
+    event_type = LEGACY_CALENDAR_EVENT_TYPE_MAP.get(raw_type, raw_type)
+    return event_type if event_type in CALENDAR_EVENT_TYPES else "部門會議"
+
+
 def send_push_notifications() -> None:
     public_key, private_key = vapid_keys()
     contact = os.environ.get("VAPID_CONTACT", "mailto:admin@example.com")
@@ -530,7 +543,7 @@ def send_push_notifications() -> None:
             is_calendar_event = item_type == "calendar_event"
             message = json.dumps({
                 "title": "重要行程提醒" if is_calendar_event else "老師專案管理提醒",
-                "body": f"{item.get('event_type', '重要行程')}｜{item.get('title', '行程時間到了')}" if is_calendar_event else f"{project.get('course', '我的工作')}｜{item.get('title', '工作時間到了')}",
+                "body": f"{calendar_event_type_label(item)}｜{item.get('title', '行程時間到了')}" if is_calendar_event else f"{project.get('course', '我的工作')}｜{item.get('title', '工作時間到了')}",
                 "url": f"/?calendar_date={str(item.get('date', ''))[:10]}" if is_calendar_event else "/",
                 "tag": key,
                 "task_id": "" if is_calendar_event else item.get("id", ""),
