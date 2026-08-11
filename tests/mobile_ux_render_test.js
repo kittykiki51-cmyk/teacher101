@@ -251,15 +251,15 @@ assert(styles.includes(".task-conflict-warning") && styles.includes("border-left
 const index = read("../index.html");
 assert(index.includes("mobile-button-label"), "Mobile top bar should use a compact add label");
 assert(index.includes('href="app-icon.svg"') && index.includes('href="app-icon-192.png"'), "The app should publish browser and home-screen icons");
-assert(index.includes('styles.css?v=31') && index.includes('app.js?v=31'), "The page should request versioned application assets after the event-category update");
+assert(index.includes('styles.css?v=32') && index.includes('app.js?v=32'), "The page should request versioned application assets after the event-color update");
 
 const manifest = read("../manifest.json");
 assert(manifest.includes("app-icon-192.png") && manifest.includes("app-icon-512.png") && manifest.includes("maskable"), "The PWA manifest should publish installable app icons");
 
 const worker = read("../service-worker.js");
 new Function(worker);
-assert(worker.includes('teacher-operations-v31'), "PWA cache should be refreshed after the event-category update");
-assert(worker.includes('"/styles.css?v=31"') && worker.includes('"/app.js?v=31"'), "The PWA shell should cache versioned application assets");
+assert(worker.includes('teacher-operations-v32'), "PWA cache should be refreshed after the event-color update");
+assert(worker.includes('"/styles.css?v=32"') && worker.includes('"/app.js?v=32"'), "The PWA shell should cache versioned application assets");
 assert(worker.includes("event.respondWith(updateCache.catch"), "Online application assets should load from the network before falling back to cache");
 assert(worker.includes("icon-house.svg") && worker.includes("app-icon-512.png"), "The PWA shell should cache identity and navigation assets");
 assert(worker.includes('LOGIN_PATHS.has(url.pathname)'), "The service worker should leave login documents and assets to the network");

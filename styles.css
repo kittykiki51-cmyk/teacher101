@@ -4129,7 +4129,7 @@ button.day-cell:hover {
     width: 5px;
     height: 5px;
     border-radius: 50%;
-    background: #ad435c;
+    background: var(--important-event-dot, #596573);
     content: "";
   }
 

@@ -11,8 +11,9 @@ const STATUS_WAITING = "等待中";
 const TASK_TYPE_PHONE = "電話聯繫";
 const ROLE_FORMAL = "正式";
 const ROLE_UNSET = "未設定";
-const CALENDAR_EVENT_TYPES = ["要約面試", "線上面試會議", "部門會議"];
+const CALENDAR_EVENT_TYPES = ["休假", "邀約面試", "線上面試會議", "部門會議"];
 const LEGACY_CALENDAR_EVENT_TYPE_MAP = {
+  "要約面試": "邀約面試",
   "公告": "部門會議",
   "會議": "部門會議",
   "重要事項": "部門會議",
@@ -827,7 +828,7 @@ function renderDashboard() {
 
 function renderDashboardImportantEvents(events) {
   return `<section class="home-panel today-events-panel">
-    <div class="panel-title-row"><div><h3>今日重要行程</h3><p class="muted panel-subtitle">面試邀約、線上面試與部門會議集中顯示，不會混入工作完成清單。</p></div><button class="ghost-button" data-calendar-event-add="${todayISO()}">新增行程</button></div>
+    <div class="panel-title-row"><div><h3>今日重要行程</h3><p class="muted panel-subtitle">休假、面試邀約、線上面試與部門會議集中顯示，不會混入工作完成清單。</p></div><button class="ghost-button" data-calendar-event-add="${todayISO()}">新增行程</button></div>
     <div class="dashboard-event-list">${events.map((event) => {
       const project = projectById(event.project_id);
       return `<button type="button" class="dashboard-event-row" style="${calendarImportantColorStyle(event)}" data-calendar-event-edit="${escapeHTML(event.id)}"><span class="dashboard-event-type">${escapeHTML(calendarImportantType(event))}</span><strong>${escapeHTML(calendarImportantTimeLabel(event))}</strong><span>${escapeHTML(event.title || "未命名行程")}</span>${project ? `<small>${escapeHTML(project.course || "未命名專案")}</small>` : ""}</button>`;
@@ -1569,9 +1570,10 @@ function calendarEventsOnDate(iso) {
 }
 
 const CALENDAR_IMPORTANT_COLORS = {
-  "要約面試": { color: "#ad435c", soft: "#fbeef1", border: "#edc3cd" },
-  "線上面試會議": { color: "#3f5ecf", soft: "#eef1ff", border: "#cbd3fb" },
-  "部門會議": { color: "#1f7b69", soft: "#e9f6f2", border: "#b9dfd5" },
+  "休假": { color: "#b9485c", soft: "#fbeef1", border: "#edc3cd" },
+  "邀約面試": { color: "#3f5ecf", soft: "#eef1ff", border: "#cbd3fb" },
+  "線上面試會議": { color: "#1f7b69", soft: "#e9f6f2", border: "#b9dfd5" },
+  "部門會議": { color: "#596573", soft: "#f0f3f5", border: "#cfd6dc" },
 };
 
 function calendarImportantType(event) {
@@ -1581,8 +1583,12 @@ function calendarImportantType(event) {
 }
 
 function calendarImportantColorStyle(event) {
-  const color = CALENDAR_IMPORTANT_COLORS[calendarImportantType(event)];
+  const color = calendarImportantColor(event);
   return `--event-color:${color.color};--event-soft:${color.soft};--event-border:${color.border}`;
+}
+
+function calendarImportantColor(event) {
+  return CALENDAR_IMPORTANT_COLORS[calendarImportantType(event)];
 }
 
 const CALENDAR_PROJECT_COLORS = [
@@ -1743,7 +1749,7 @@ function renderDayCell(date, displayedMonth) {
   const visibleEvents = events.slice(0, 2);
   const visibleTasks = tasks.slice(0, Math.max(0, 3 - visibleEvents.length));
   const hiddenCount = events.length + tasks.length - visibleEvents.length - visibleTasks.length;
-  return `<div class="day-cell ${date.getMonth() !== displayedMonth ? "outside-month" : ""} ${iso === todayISO() ? "today" : ""} ${iso === state.selectedCalendarDate ? "selected" : ""} ${tasks.length || events.length ? "has-tasks" : ""} ${events.length ? "has-important-events" : ""}" data-calendar-date="${iso}" data-calendar-drop="${iso}" role="button" tabindex="0" title="單擊選取，雙擊新增工作">
+  return `<div class="day-cell ${date.getMonth() !== displayedMonth ? "outside-month" : ""} ${iso === todayISO() ? "today" : ""} ${iso === state.selectedCalendarDate ? "selected" : ""} ${tasks.length || events.length ? "has-tasks" : ""} ${events.length ? "has-important-events" : ""}" style="${events.length ? `--important-event-dot:${calendarImportantColor(events[0]).color}` : ""}" data-calendar-date="${iso}" data-calendar-drop="${iso}" role="button" tabindex="0" title="單擊選取，雙擊新增工作">
     <div class="day-number"><span>${date.getDate()}</span></div>
     ${visibleEvents.map((event) => renderCalendarImportantEvent(event)).join("")}${visibleTasks.map((task) => calendarEvent(task)).join("")}${hiddenCount ? `<span class="calendar-more">另有 ${hiddenCount} 項</span>` : ""}
   </div>`;
@@ -2820,7 +2826,7 @@ function openCalendarEventDialog(calendarEventItem = null, selectedDate = "") {
   const targetProjectId = calendarEventItem?.project_id || "";
   layer.hidden = false;
   layer.innerHTML = `<div class="modal-card compact-modal calendar-event-modal" role="dialog" aria-modal="true">
-    <div class="modal-header"><div><h3>${calendarEventItem?.id ? "編輯重要行程" : "新增重要行程"}</h3><p class="muted">面試邀約、線上面試與部門會議不會混入工作完成清單。</p></div><button class="icon-button" data-close-modal aria-label="關閉">×</button></div>
+    <div class="modal-header"><div><h3>${calendarEventItem?.id ? "編輯重要行程" : "新增重要行程"}</h3><p class="muted">休假、面試邀約、線上面試與部門會議不會混入工作完成清單。</p></div><button class="icon-button" data-close-modal aria-label="關閉">×</button></div>
     <form class="form-grid" id="calendarEventForm" autocomplete="off">
       <div class="two-col"><label><span>分類</span><select class="select" name="event_type">${CALENDAR_EVENT_TYPES.map((value) => `<option ${calendarImportantType(calendarEventItem) === value ? "selected" : ""}>${value}</option>`).join("")}</select></label><label><span>日期</span><input class="search-input" type="date" name="date" value="${escapeHTML(calendarEventItem?.date || selectedDate || state.selectedCalendarDate || todayISO())}" required></label></div>
       <label><span>標題</span><input class="search-input" name="title" required maxlength="160" value="${escapeHTML(calendarEventItem?.title || "")}" placeholder="例如：七月課程排程會議"></label>

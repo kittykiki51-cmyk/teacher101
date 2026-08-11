@@ -69,6 +69,8 @@ assert [item["id"] for item in timed_due] == ["timed"]
 assert [item["id"] for item in all_day_due] == ["all-day"]
 assert server.calendar_event_type_label({"event_type": "線上面試會議"}) == "線上面試會議"
 assert server.calendar_event_type_label({"event_type": "會議"}) == "部門會議"
+assert server.calendar_event_type_label({"event_type": "要約面試"}) == "邀約面試"
+assert server.calendar_event_type_label({"event_type": "休假"}) == "休假"
 
 server.login_attempts.clear()
 limited_client = server.app.test_client()
