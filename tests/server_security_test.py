@@ -1,6 +1,7 @@
 import os
 import sys
 import tempfile
+from datetime import datetime
 
 
 os.environ["APP_PASSWORD"] = "audit-password"
@@ -19,6 +20,7 @@ def workspace_payload() -> dict:
         "settings": {"monthly_goal": 2},
         "projects": [],
         "tasks": [],
+        "calendar_events": [],
         "checklists": [],
         "progress_logs": [],
         "project_messages": [],
@@ -55,6 +57,16 @@ assert client.put("/api/workspace", json={"workspace": broken_nested, "revision"
 assert client.put("/api/workspace", json={"workspace": workspace_payload(), "revision": revision}).status_code == 403
 assert client.put("/api/workspace", json={"workspace": workspace_payload(), "revision": revision}, headers=headers).status_code == 200
 assert client.put("/api/workspace", json={"workspace": workspace_payload(), "revision": revision}, headers=headers).status_code == 409
+
+reminder_workspace = workspace_payload()
+reminder_workspace["calendar_events"] = [
+    {"id": "timed", "date": "2026-08-11", "time": "10:00", "all_day": False, "reminder_minutes": "10"},
+    {"id": "all-day", "date": "2026-08-11", "all_day": True, "reminder_minutes": "0"},
+]
+timed_due = server.due_calendar_events(reminder_workspace, datetime(2026, 8, 11, 9, 50, tzinfo=server.APP_TIMEZONE))
+all_day_due = server.due_calendar_events(reminder_workspace, datetime(2026, 8, 11, 9, 0, tzinfo=server.APP_TIMEZONE))
+assert [item["id"] for item in timed_due] == ["timed"]
+assert [item["id"] for item in all_day_due] == ["all-day"]
 
 server.login_attempts.clear()
 limited_client = server.app.test_client()

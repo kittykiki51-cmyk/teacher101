@@ -11,6 +11,7 @@ const STATUS_WAITING = "等待中";
 const TASK_TYPE_PHONE = "電話聯繫";
 const ROLE_FORMAL = "正式";
 const ROLE_UNSET = "未設定";
+const CALENDAR_EVENT_TYPES = ["公告", "會議", "重要事項", "錄製／上課"];
 const STAGE_DEFINITIONS = [
   { value: "招募老師", progress: 10, label: "10% 招募老師" },
   { value: "面試中", progress: 15, label: "15% 面試中" },
@@ -29,7 +30,7 @@ const LEGACY_STAGE_MAP = {
   "課程上架": "已班級排課／錄製完成",
   "已完成": "已上架",
 };
-const WORKSPACE_COLLECTION_FIELDS = ["projects", "tasks", "checklists", "progress_logs", "project_messages", "history", "archives"];
+const WORKSPACE_COLLECTION_FIELDS = ["projects", "tasks", "calendar_events", "checklists", "progress_logs", "project_messages", "history", "archives"];
 
 const NAV_ITEMS = [
   { id: "dashboard", label: "營運首頁", mobileLabel: "首頁", icon: "house", title: "營運首頁" },
@@ -43,6 +44,7 @@ const emptyWorkspace = () => ({
   settings: { monthly_goal: 2 },
   projects: [],
   tasks: [],
+  calendar_events: [],
   checklists: [],
   progress_logs: [],
   project_messages: [],
@@ -252,6 +254,7 @@ function normalizeWorkspace(value) {
     settings: { ...emptyWorkspace().settings, ...(data.settings || {}) },
     projects: Array.isArray(data.projects) ? data.projects : [],
     tasks: Array.isArray(data.tasks) ? data.tasks : [],
+    calendar_events: Array.isArray(data.calendar_events) ? data.calendar_events : [],
     checklists: Array.isArray(data.checklists) ? data.checklists : [],
     progress_logs: Array.isArray(data.progress_logs) ? data.progress_logs : [],
     project_messages: Array.isArray(data.project_messages) ? data.project_messages : [],
@@ -355,6 +358,7 @@ function mergeWorkspaces(remoteValue, localValue, baseValue = null) {
     settings: mergeObject(remote.settings, local.settings, base.settings),
     projects: mergeById(remote.projects, local.projects, base.projects),
     tasks: mergeById(remote.tasks, local.tasks, base.tasks),
+    calendar_events: mergeById(remote.calendar_events, local.calendar_events, base.calendar_events),
     checklists: mergeById(remote.checklists, local.checklists, base.checklists),
     progress_logs: mergeById(remote.progress_logs, local.progress_logs, base.progress_logs),
     project_messages: mergeById(remote.project_messages, local.project_messages, base.project_messages),
@@ -425,6 +429,22 @@ function taskDurationMinutes(task) {
 function taskTimeLabel(task) {
   if (!task?.time) return "全天";
   return taskDurationMinutes(task) ? `${task.time}–${task.end_time}` : task.time;
+}
+
+function calendarImportantTimeLabel(event) {
+  if (event?.all_day || !event?.time) return "全天";
+  const start = timeToMinutes(event.time);
+  const end = timeToMinutes(event.end_time);
+  return start !== null && end !== null && end > start ? `${event.time}–${event.end_time}` : event.time;
+}
+
+function calendarImportantDurationStyle(event) {
+  const start = timeToMinutes(event?.time);
+  const end = timeToMinutes(event?.end_time);
+  if (start === null || end === null || end <= start) return "";
+  const height = Math.round(Math.max(28, Math.min(204, ((end - start) / 60) * 68 - 4)));
+  const top = Math.round(((start % 60) / 60) * 68);
+  return `;--event-height:${height}px;--event-top:${top}px`;
 }
 
 function taskInterval(task) {
@@ -516,6 +536,16 @@ function todayTasks() {
   return pendingTasks()
     .filter((task) => task.date === today && task.task_type !== TASK_TYPE_PHONE)
     .sort(sortTasks);
+}
+
+function sortCalendarImportantEvents(a, b) {
+  return `${a.all_day || !a.time ? "0" : "1"} ${a.time || "00:00"} ${a.title || ""}`.localeCompare(`${b.all_day || !b.time ? "0" : "1"} ${b.time || "00:00"} ${b.title || ""}`, "zh-Hant");
+}
+
+function todayCalendarEvents() {
+  return state.workspace.calendar_events
+    .filter((event) => event.date === todayISO())
+    .sort(sortCalendarImportantEvents);
 }
 
 function priorityTasks() {
@@ -717,6 +747,9 @@ function renderGlobalSearch() {
   state.workspace.tasks.forEach((task) => {
     if (includes(task.title || "", task.note || "", projectById(task.project_id)?.course || "")) results.push({ type: "工作", title: task.title || "未命名工作", detail: `${task.date || "未排日期"} ${taskTimeLabel(task)}`, task_id: task.id });
   });
+  state.workspace.calendar_events.forEach((event) => {
+    if (includes(event.title || "", event.note || "", event.location || "", event.event_type || "", projectById(event.project_id)?.course || "")) results.push({ type: event.event_type || "重要行程", title: event.title || "未命名行程", detail: `${event.date || "未排日期"} ${calendarImportantTimeLabel(event)}`, calendar_event_id: event.id });
+  });
   state.workspace.project_messages.forEach((message) => {
     if (includes(message.text || "")) results.push({ type: "留言", title: message.text || "", detail: projectById(message.project_id)?.course || "", project_id: message.project_id });
   });
@@ -728,7 +761,7 @@ function renderGlobalSearch() {
   });
   return `<section class="card search-results-page">
     <div class="card-header"><div><h3>搜尋結果</h3><p class="muted">找到 ${results.length} 筆資料</p></div><button class="ghost-button" data-search-close>返回</button></div>
-    <div class="search-result-list">${results.slice(0, 100).map((item) => `<button class="search-result-row" ${item.task_id ? `data-task-edit="${escapeHTML(item.task_id)}"` : item.project_id ? `data-project-open="${escapeHTML(item.project_id)}"` : ""}><span class="pill">${escapeHTML(item.type)}</span><span><strong>${escapeHTML(item.title)}</strong><small>${escapeHTML(item.detail)}</small></span></button>`).join("") || `<p class="muted">沒有符合的資料。</p>`}</div>
+    <div class="search-result-list">${results.slice(0, 100).map((item) => `<button class="search-result-row" ${item.calendar_event_id ? `data-calendar-event-edit="${escapeHTML(item.calendar_event_id)}"` : item.task_id ? `data-task-edit="${escapeHTML(item.task_id)}"` : item.project_id ? `data-project-open="${escapeHTML(item.project_id)}"` : ""}><span class="pill">${escapeHTML(item.type)}</span><span><strong>${escapeHTML(item.title)}</strong><small>${escapeHTML(item.detail)}</small></span></button>`).join("") || `<p class="muted">沒有符合的資料。</p>`}</div>
   </section>`;
 }
 
@@ -739,6 +772,7 @@ function renderDashboard() {
   const monthGoal = Number(state.workspace.settings.monthly_goal ?? 2);
   const today = new Date();
   const tasks = todayTasks().slice(0, 8);
+  const importantEvents = todayCalendarEvents();
   return `
     <div class="dashboard-page">
     <div class="desktop-page-title">
@@ -758,7 +792,8 @@ function renderDashboard() {
         ${monthlyTargetSummary(nextMonth, "下月", monthGoal)}
       </div>
     </section>
-    <div class="home-body">
+    <div class="home-body ${importantEvents.length ? "has-today-events" : ""}">
+      ${importantEvents.length ? renderDashboardImportantEvents(importantEvents) : ""}
       <section class="home-panel formal-panel">
         <h3>本月正式課程</h3>
         <p class="muted panel-subtitle">只列出本月真正要推進上架的正式課程。</p>
@@ -782,6 +817,16 @@ function renderDashboard() {
     </div>
     </div>
   `;
+}
+
+function renderDashboardImportantEvents(events) {
+  return `<section class="home-panel today-events-panel">
+    <div class="panel-title-row"><div><h3>今日重要行程</h3><p class="muted panel-subtitle">公告、會議與重要事項集中顯示，不會混入工作完成清單。</p></div><button class="ghost-button" data-calendar-event-add="${todayISO()}">新增行程</button></div>
+    <div class="dashboard-event-list">${events.map((event) => {
+      const project = projectById(event.project_id);
+      return `<button type="button" class="dashboard-event-row" style="${calendarImportantColorStyle(event)}" data-calendar-event-edit="${escapeHTML(event.id)}"><span class="dashboard-event-type">${escapeHTML(calendarImportantType(event))}</span><strong>${escapeHTML(calendarImportantTimeLabel(event))}</strong><span>${escapeHTML(event.title || "未命名行程")}</span>${project ? `<small>${escapeHTML(project.course || "未命名專案")}</small>` : ""}</button>`;
+    }).join("")}</div>
+  </section>`;
 }
 
 function monthlyGoalProjects(targetMonth) {
@@ -1505,6 +1550,34 @@ function tasksOnDate(iso) {
   return state.workspace.tasks.filter((task) => task.date === iso && calendarTaskMatches(task)).sort(sortTasks);
 }
 
+function calendarImportantEventMatches(event) {
+  const query = state.calendarQuery.trim().toLowerCase();
+  const project = projectById(event.project_id);
+  return !query || `${event.title || ""} ${event.note || ""} ${event.location || ""} ${event.event_type || ""} ${project?.course || ""}`.toLowerCase().includes(query);
+}
+
+function calendarEventsOnDate(iso) {
+  return state.workspace.calendar_events
+    .filter((event) => event.date === iso && calendarImportantEventMatches(event))
+    .sort(sortCalendarImportantEvents);
+}
+
+const CALENDAR_IMPORTANT_COLORS = {
+  "公告": { color: "#596573", soft: "#f0f3f5", border: "#cfd6dc" },
+  "會議": { color: "#3f5ecf", soft: "#eef1ff", border: "#cbd3fb" },
+  "重要事項": { color: "#ad435c", soft: "#fbeef1", border: "#edc3cd" },
+  "錄製／上課": { color: "#1f7b69", soft: "#e9f6f2", border: "#b9dfd5" },
+};
+
+function calendarImportantType(event) {
+  return CALENDAR_EVENT_TYPES.includes(event?.event_type) ? event.event_type : "重要事項";
+}
+
+function calendarImportantColorStyle(event) {
+  const color = CALENDAR_IMPORTANT_COLORS[calendarImportantType(event)];
+  return `--event-color:${color.color};--event-soft:${color.soft};--event-border:${color.border}`;
+}
+
 const CALENDAR_PROJECT_COLORS = [
   { color: "#5166e6", soft: "#eef0ff", border: "#cdd4ff" },
   { color: "#16847a", soft: "#e8f6f3", border: "#b7e1da" },
@@ -1540,6 +1613,21 @@ function calendarEvent(task, extraClass = "") {
   return `<button type="button" draggable="true" class="calendar-event ${extraClass} ${durationClass} ${task.status === STATUS_COMPLETED ? "completed" : ""}" style="${calendarColorStyle(task)}${calendarDurationStyle(task)}" data-calendar-task="${escapeHTML(task.id)}" title="${escapeHTML(`${kind.label}，${taskTimeLabel(task)}，拖曳以調整日期或時間`)}"><i class="calendar-event-kind">${escapeHTML(kind.short)}</i><b>${escapeHTML(taskTimeLabel(task))}</b><span>${escapeHTML(task.title || "未命名工作")}</span></button>`;
 }
 
+function renderCalendarImportantEvent(event, extraClass = "") {
+  const durationClass = event.time && event.end_time && ["week-event", "agenda-event"].includes(extraClass) ? "duration-event" : "";
+  return `<button type="button" class="calendar-important-event ${extraClass} ${durationClass}" style="${calendarImportantColorStyle(event)}${calendarImportantDurationStyle(event)}" data-calendar-event-edit="${escapeHTML(event.id)}" title="${escapeHTML(`${calendarImportantType(event)}，${calendarImportantTimeLabel(event)}，${event.title || "未命名行程"}`)}"><i>${escapeHTML(calendarImportantType(event))}</i><b>${escapeHTML(calendarImportantTimeLabel(event))}</b><span>${escapeHTML(event.title || "未命名行程")}</span></button>`;
+}
+
+function renderCalendarPanelEvent(event) {
+  const project = projectById(event.project_id);
+  const link = validExternalUrl(event.url);
+  const locationText = event.location ? ` · ${event.location}` : "";
+  return `<article class="calendar-panel-event" style="${calendarImportantColorStyle(event)}">
+    <button type="button" class="calendar-panel-event-copy" data-calendar-event-edit="${escapeHTML(event.id)}"><span class="calendar-event-type">${escapeHTML(calendarImportantType(event))}</span><span><strong>${escapeHTML(event.title || "未命名行程")}</strong><small>${escapeHTML(`${calendarImportantTimeLabel(event)}${locationText}`)}${event.reminder_minutes !== undefined && event.reminder_minutes !== "" ? ` · ${escapeHTML(reminderLabel(event.reminder_minutes))}` : ""}</small>${event.note ? `<em>${escapeHTML(event.note)}</em>` : ""}</span></button>
+    <div class="calendar-event-actions">${project ? `<button class="small-button project-jump-button" data-project-open="${escapeHTML(project.id)}">前往專案</button>` : ""}${link ? `<button class="small-button" data-open-url="${escapeHTML(link)}">開啟連結</button>` : ""}<button class="small-button" data-calendar-event-edit="${escapeHTML(event.id)}">編輯</button><button class="calendar-delete-button" data-calendar-event-delete="${escapeHTML(event.id)}">刪除</button></div>
+  </article>`;
+}
+
 function renderCalendarPanelTask(task) {
   const project = projectById(task.project_id);
   const completed = task.status === STATUS_COMPLETED;
@@ -1560,15 +1648,16 @@ function renderCalendarPanelTask(task) {
   </article>`;
 }
 
-function renderCalendarPanel(tasks) {
-  if (!tasks.length) return `<div class="calendar-panel-empty"><strong>這一天沒有工作</strong><p>雙擊日期或使用下方按鈕安排事項。</p><button type="button" class="small-button" data-calendar-add="${escapeHTML(state.selectedCalendarDate)}">新增當日工作</button></div>`;
-  return tasks.map(renderCalendarPanelTask).join("");
+function renderCalendarPanel(events, tasks) {
+  if (!events.length && !tasks.length) return `<div class="calendar-panel-empty"><strong>這一天尚未安排行程或工作</strong><p>新增重要行程，或雙擊日期安排一般工作。</p><div class="toolbar"><button type="button" class="primary-button" data-calendar-event-add="${escapeHTML(state.selectedCalendarDate)}">新增重要行程</button><button type="button" class="small-button" data-calendar-add="${escapeHTML(state.selectedCalendarDate)}">新增工作</button></div></div>`;
+  return `${events.length ? `<div class="calendar-panel-section"><h5>重要行程</h5>${events.map(renderCalendarPanelEvent).join("")}</div>` : ""}${tasks.length ? `<div class="calendar-panel-section"><h5>工作項目</h5>${tasks.map(renderCalendarPanelTask).join("")}</div>` : ""}`;
 }
 
 function renderCalendar() {
   const anchor = parseDate(state.selectedCalendarDate) || new Date();
   const selectedDate = dateISO(anchor);
   const selectedTasks = tasksOnDate(selectedDate);
+  const selectedEvents = calendarEventsOnDate(selectedDate);
   const selectedDateLabel = new Intl.DateTimeFormat("zh-Hant", { month: "long", day: "numeric", weekday: "long" }).format(anchor);
   const viewLabels = { month: "月", week: "週", day: "日" };
   const title = state.calendarView === "month"
@@ -1576,30 +1665,30 @@ function renderCalendar() {
     : state.calendarView === "week" ? weekRangeLabel(anchor) : selectedDateLabel;
   return `<section class="card calendar-card">
     <div class="card-header calendar-main-header">
-      <div><h3>${escapeHTML(title)}</h3><p class="muted">${selectedTasks.length} 件所選日期工作</p></div>
+      <div><h3>${escapeHTML(title)}</h3><p class="muted">${selectedEvents.length} 項重要行程 · ${selectedTasks.length} 件工作</p></div>
       <div class="calendar-header-actions">
         <div class="segmented-control">${Object.entries(viewLabels).map(([value, label]) => `<button class="${state.calendarView === value ? "active" : ""}" data-calendar-view="${value}">${label}</button>`).join("")}</div>
         <div class="toolbar"><button class="small-button" data-period="-1">上一${viewLabels[state.calendarView]}</button><button class="small-button" data-period="0">今天</button><button class="small-button" data-period="1">下一${viewLabels[state.calendarView]}</button></div>
       </div>
     </div>
     <div class="calendar-filters">
-      <input class="search-input" id="calendarSearch" value="${escapeHTML(state.calendarQuery)}" placeholder="搜尋工作、課程或備註">
+      <input class="search-input" id="calendarSearch" value="${escapeHTML(state.calendarQuery)}" placeholder="搜尋行程、工作、課程或備註">
       <select class="select" id="calendarStatusFilter" aria-label="工作狀態篩選">${["全部", "未完成", "已完成"].map((value) => `<option ${state.calendarStatusFilter === value ? "selected" : ""}>${value}</option>`).join("")}</select>
-      <button class="primary-button" data-calendar-add="${escapeHTML(selectedDate)}">新增工作</button>
+      <button class="primary-button" data-calendar-event-add="${escapeHTML(selectedDate)}">新增重要行程</button><button class="ghost-button calendar-work-add" data-calendar-add="${escapeHTML(selectedDate)}">新增工作</button>
     </div>
-    ${renderMobileCalendarAgenda(anchor, selectedTasks, selectedDateLabel)}
+    ${renderMobileCalendarAgenda(anchor, selectedEvents, selectedTasks, selectedDateLabel)}
     <div class="grid calendar-layout ${state.calendarView}-view-layout">
       <div class="calendar-view-main">${state.calendarView === "month" ? renderMonthCalendar(anchor) : state.calendarView === "week" ? renderWeekCalendar(anchor) : renderDayCalendar(anchor)}</div>
       <button type="button" class="calendar-sheet-backdrop ${state.calendarMobilePanelOpen ? "open" : ""}" data-calendar-panel-close aria-label="關閉所選日期工作"></button>
       <aside class="calendar-day-panel ${state.calendarMobilePanelOpen ? "open" : ""}" aria-live="polite">
-        <div class="calendar-day-header"><div><p class="calendar-day-kicker">${selectedDate === todayISO() ? "今日工作項目" : "所選日期工作"}</p><h4>${escapeHTML(selectedDateLabel)}</h4></div><div class="toolbar">${pill(`${selectedTasks.length} 件`, selectedTasks.length ? "green" : "gray")}<button class="icon-button calendar-add-button" data-calendar-add="${escapeHTML(selectedDate)}" title="新增工作">＋</button><button class="icon-button calendar-panel-close" data-calendar-panel-close title="關閉">×</button></div></div>
-        <div class="calendar-panel-list">${renderCalendarPanel(selectedTasks)}</div>
+        <div class="calendar-day-header"><div><p class="calendar-day-kicker">${selectedDate === todayISO() ? "今日安排" : "所選日期安排"}</p><h4>${escapeHTML(selectedDateLabel)}</h4></div><div class="toolbar">${pill(`${selectedEvents.length + selectedTasks.length} 項`, selectedEvents.length + selectedTasks.length ? "green" : "gray")}<button class="small-button calendar-important-add" data-calendar-event-add="${escapeHTML(selectedDate)}" title="新增重要行程">行程＋</button><button class="icon-button calendar-add-button" data-calendar-add="${escapeHTML(selectedDate)}" title="新增工作">＋</button><button class="icon-button calendar-panel-close" data-calendar-panel-close title="關閉">×</button></div></div>
+        <div class="calendar-panel-list">${renderCalendarPanel(selectedEvents, selectedTasks)}</div>
       </aside>
     </div>
   </section>`;
 }
 
-function renderMobileCalendarAgenda(anchor, selectedTasks, selectedDateLabel) {
+function renderMobileCalendarAgenda(anchor, selectedEvents, selectedTasks, selectedDateLabel) {
   const start = weekStart(anchor);
   const dates = Array.from({ length: 7 }, (_, index) => {
     const date = new Date(start);
@@ -1616,15 +1705,15 @@ function renderMobileCalendarAgenda(anchor, selectedTasks, selectedDateLabel) {
     <div class="mobile-date-strip">
       ${dates.map((date) => {
         const iso = dateISO(date);
-        const count = tasksOnDate(iso).length;
+        const count = tasksOnDate(iso).length + calendarEventsOnDate(iso).length;
         return `<button type="button" class="mobile-date-button ${iso === todayISO() ? "today" : ""} ${iso === state.selectedCalendarDate ? "selected" : ""}" data-calendar-date="${iso}" data-calendar-inline>
           <span>${["日", "一", "二", "三", "四", "五", "六"][date.getDay()]}</span><strong>${date.getDate()}</strong>${count ? `<i>${count}</i>` : ""}
         </button>`;
       }).join("")}
     </div>
     <section class="mobile-agenda-list">
-      <div class="calendar-day-header"><div><p class="calendar-day-kicker">${state.selectedCalendarDate === todayISO() ? "今日工作項目" : "當日工作項目"}</p><h4>${escapeHTML(selectedDateLabel)}</h4></div><div class="toolbar">${pill(`${selectedTasks.length} 件`, selectedTasks.length ? "green" : "gray")}<button class="icon-button calendar-add-button" data-calendar-add="${escapeHTML(state.selectedCalendarDate)}" title="新增工作">＋</button></div></div>
-      <div class="calendar-panel-list">${renderCalendarPanel(selectedTasks)}</div>
+      <div class="calendar-day-header"><div><p class="calendar-day-kicker">${state.selectedCalendarDate === todayISO() ? "今日安排" : "當日安排"}</p><h4>${escapeHTML(selectedDateLabel)}</h4></div><div class="toolbar">${pill(`${selectedEvents.length + selectedTasks.length} 項`, selectedEvents.length + selectedTasks.length ? "green" : "gray")}<button class="small-button calendar-important-add" data-calendar-event-add="${escapeHTML(state.selectedCalendarDate)}">行程＋</button><button class="icon-button calendar-add-button" data-calendar-add="${escapeHTML(state.selectedCalendarDate)}" title="新增工作">＋</button></div></div>
+      <div class="calendar-panel-list">${renderCalendarPanel(selectedEvents, selectedTasks)}</div>
     </section>
     <button type="button" class="mobile-month-toggle" data-mobile-month-toggle aria-expanded="${state.calendarMobileMonthOpen}">${state.calendarMobileMonthOpen ? "收起完整月曆" : "查看完整月曆"}</button>
     <div class="mobile-month-calendar ${state.calendarMobileMonthOpen ? "open" : ""}">${renderMonthCalendar(anchor)}</div>
@@ -1643,9 +1732,13 @@ function renderMonthCalendar(anchor) {
 function renderDayCell(date, displayedMonth) {
   const iso = dateISO(date);
   const tasks = tasksOnDate(iso);
-  return `<div class="day-cell ${date.getMonth() !== displayedMonth ? "outside-month" : ""} ${iso === todayISO() ? "today" : ""} ${iso === state.selectedCalendarDate ? "selected" : ""} ${tasks.length ? "has-tasks" : ""}" data-calendar-date="${iso}" data-calendar-drop="${iso}" role="button" tabindex="0" title="單擊選取，雙擊新增工作">
+  const events = calendarEventsOnDate(iso);
+  const visibleEvents = events.slice(0, 2);
+  const visibleTasks = tasks.slice(0, Math.max(0, 3 - visibleEvents.length));
+  const hiddenCount = events.length + tasks.length - visibleEvents.length - visibleTasks.length;
+  return `<div class="day-cell ${date.getMonth() !== displayedMonth ? "outside-month" : ""} ${iso === todayISO() ? "today" : ""} ${iso === state.selectedCalendarDate ? "selected" : ""} ${tasks.length || events.length ? "has-tasks" : ""} ${events.length ? "has-important-events" : ""}" data-calendar-date="${iso}" data-calendar-drop="${iso}" role="button" tabindex="0" title="單擊選取，雙擊新增工作">
     <div class="day-number"><span>${date.getDate()}</span></div>
-    ${tasks.slice(0, 3).map((task) => calendarEvent(task)).join("")}${tasks.length > 3 ? `<span class="calendar-more">另有 ${tasks.length - 3} 件</span>` : ""}
+    ${visibleEvents.map((event) => renderCalendarImportantEvent(event)).join("")}${visibleTasks.map((task) => calendarEvent(task)).join("")}${hiddenCount ? `<span class="calendar-more">另有 ${hiddenCount} 項</span>` : ""}
   </div>`;
 }
 
@@ -1665,20 +1758,24 @@ function renderWeekCalendar(anchor) {
   const start = weekStart(anchor);
   const dates = Array.from({ length: 7 }, (_, index) => { const date = new Date(start); date.setDate(start.getDate() + index); return date; });
   const tasks = dates.flatMap((date) => tasksOnDate(dateISO(date)));
-  const hours = calendarHours(tasks, dates.some((date) => dateISO(date) === todayISO()));
+  const events = dates.flatMap((date) => calendarEventsOnDate(dateISO(date)));
+  const hours = calendarHours([...tasks, ...events], dates.some((date) => dateISO(date) === todayISO()));
   return `<div class="week-calendar" data-calendar-scroll>
     <div class="week-time-header"><span class="time-gutter"></span>${dates.map((date) => { const iso = dateISO(date); return `<button type="button" class="week-date-heading ${iso === todayISO() ? "today" : ""} ${iso === state.selectedCalendarDate ? "selected" : ""}" data-calendar-date="${iso}"><span>週${["日", "一", "二", "三", "四", "五", "六"][date.getDay()]}</span><strong>${date.getDate()}</strong></button>`; }).join("")}</div>
-    <div class="week-all-day"><strong>全天</strong>${dates.map((date) => { const iso = dateISO(date); const allDay = tasksOnDate(iso).filter((task) => !task.time); return `<div data-calendar-drop="${iso}" data-drop-all-day>${allDay.map((task) => calendarEvent(task, "week-event")).join("")}</div>`; }).join("")}</div>
-    <div class="time-grid-scroll"><div class="week-hours">${hours.map((hour) => { const prefix = String(hour).padStart(2, "0"); return `<div class="week-hour-row"><time>${prefix}:00</time>${dates.map((date) => { const iso = dateISO(date); const hourTasks = tasksOnDate(iso).filter((task) => String(task.time || "").startsWith(prefix)); return `<div class="week-time-cell ${iso === state.selectedCalendarDate ? "selected" : ""}" data-calendar-drop="${iso}" data-drop-time="${prefix}:00" title="雙擊新增工作">${currentTimeMarker(iso, hour)}${hourTasks.map((task) => calendarEvent(task, "week-event")).join("")}</div>`; }).join("")}</div>`; }).join("")}</div></div>
+    <div class="week-all-day"><strong>全天</strong>${dates.map((date) => { const iso = dateISO(date); const allDayEvents = calendarEventsOnDate(iso).filter((event) => event.all_day || !event.time); const allDayTasks = tasksOnDate(iso).filter((task) => !task.time); return `<div data-calendar-drop="${iso}" data-drop-all-day>${allDayEvents.map((event) => renderCalendarImportantEvent(event, "week-event")).join("")}${allDayTasks.map((task) => calendarEvent(task, "week-event")).join("")}</div>`; }).join("")}</div>
+    <div class="time-grid-scroll"><div class="week-hours">${hours.map((hour) => { const prefix = String(hour).padStart(2, "0"); return `<div class="week-hour-row"><time>${prefix}:00</time>${dates.map((date) => { const iso = dateISO(date); const hourEvents = calendarEventsOnDate(iso).filter((event) => !event.all_day && String(event.time || "").startsWith(prefix)); const hourTasks = tasksOnDate(iso).filter((task) => String(task.time || "").startsWith(prefix)); return `<div class="week-time-cell ${iso === state.selectedCalendarDate ? "selected" : ""}" data-calendar-drop="${iso}" data-drop-time="${prefix}:00" title="雙擊新增工作">${currentTimeMarker(iso, hour)}${hourEvents.map((event) => renderCalendarImportantEvent(event, "week-event")).join("")}${hourTasks.map((task) => calendarEvent(task, "week-event")).join("")}</div>`; }).join("")}</div>`; }).join("")}</div></div>
   </div>`;
 }
 
 function renderDayCalendar(anchor) {
   const iso = dateISO(anchor);
   const tasks = tasksOnDate(iso);
-  const allDay = tasks.filter((task) => !task.time);
-  const hours = calendarHours(tasks, iso === todayISO());
-  return `<div class="day-agenda"><div class="all-day-row" data-calendar-drop="${iso}" data-drop-all-day><strong>全天</strong><div>${allDay.map((task) => calendarEvent(task, "agenda-event")).join("") || `<span class="muted">沒有全天工作</span>`}</div></div><div class="time-grid-scroll" data-calendar-scroll>${hours.map((hour) => { const prefix = String(hour).padStart(2, "0"); const hourTasks = tasks.filter((task) => String(task.time || "").startsWith(prefix)); return `<div class="hour-row" data-calendar-drop="${iso}" data-drop-time="${prefix}:00" title="雙擊新增工作"><time>${prefix}:00</time><div>${currentTimeMarker(iso, hour)}${hourTasks.map((task) => calendarEvent(task, "agenda-event")).join("")}</div></div>`; }).join("")}</div></div>`;
+  const events = calendarEventsOnDate(iso);
+  const allDayTasks = tasks.filter((task) => !task.time);
+  const allDayEvents = events.filter((event) => event.all_day || !event.time);
+  const allDayContent = `${allDayEvents.map((event) => renderCalendarImportantEvent(event, "agenda-event")).join("")}${allDayTasks.map((task) => calendarEvent(task, "agenda-event")).join("")}`;
+  const hours = calendarHours([...tasks, ...events], iso === todayISO());
+  return `<div class="day-agenda"><div class="all-day-row" data-calendar-drop="${iso}" data-drop-all-day><strong>全天</strong><div>${allDayContent || `<span class="muted">沒有全天安排</span>`}</div></div><div class="time-grid-scroll" data-calendar-scroll>${hours.map((hour) => { const prefix = String(hour).padStart(2, "0"); const hourEvents = events.filter((event) => !event.all_day && String(event.time || "").startsWith(prefix)); const hourTasks = tasks.filter((task) => String(task.time || "").startsWith(prefix)); return `<div class="hour-row" data-calendar-drop="${iso}" data-drop-time="${prefix}:00" title="雙擊新增工作"><time>${prefix}:00</time><div>${currentTimeMarker(iso, hour)}${hourEvents.map((event) => renderCalendarImportantEvent(event, "agenda-event")).join("")}${hourTasks.map((task) => calendarEvent(task, "agenda-event")).join("")}</div></div>`; }).join("")}</div></div>`;
 }
 
 function calendarHours(tasks, includesToday = false) {
@@ -1794,13 +1891,14 @@ function renderSettings() {
             <input class="search-input" id="archiveYear" type="number" min="2000" max="2100" value="${new Date().getFullYear() - 1}" aria-label="封存年度">
             <div class="toolbar"><button class="ghost-button" data-export-year>匯出年度資料</button><button class="danger-button" data-archive-year>封存已完成資料</button></div>
           </div>
-          <div class="archive-list">${(data.archives || []).slice().sort((a, b) => Number(b.year) - Number(a.year)).map((archive) => `<div class="archive-row"><div><strong>${escapeHTML(archive.year)} 年封存</strong><p class="muted">${archive.projects?.length || 0} 個專案・${archive.tasks?.length || 0} 件工作・${String(archive.created_at || "").slice(0, 10)}</p></div><div class="toolbar"><button class="small-button" data-archive-download="${escapeHTML(archive.id)}">下載</button><button class="ghost-button" data-archive-restore="${escapeHTML(archive.id)}">還原</button><button class="danger-button" data-archive-delete="${escapeHTML(archive.id)}">刪除</button></div></div>`).join("") || `<p class="muted archive-empty">目前沒有封存資料。</p>`}</div>
+          <div class="archive-list">${(data.archives || []).slice().sort((a, b) => Number(b.year) - Number(a.year)).map((archive) => `<div class="archive-row"><div><strong>${escapeHTML(archive.year)} 年封存</strong><p class="muted">${archive.projects?.length || 0} 個專案・${archive.tasks?.length || 0} 件工作・${archive.calendar_events?.length || 0} 項行程・${String(archive.created_at || "").slice(0, 10)}</p></div><div class="toolbar"><button class="small-button" data-archive-download="${escapeHTML(archive.id)}">下載</button><button class="ghost-button" data-archive-restore="${escapeHTML(archive.id)}">還原</button><button class="danger-button" data-archive-delete="${escapeHTML(archive.id)}">刪除</button></div></div>`).join("") || `<p class="muted archive-empty">目前沒有封存資料。</p>`}</div>
         </div>
         <div class="card">
           <h4>資料摘要</h4>
           <div class="list" style="margin-top:10px">
             ${metric("專案", data.projects.length, "projects")}
             ${metric("工作", data.tasks.length, "tasks")}
+            ${metric("重要行程", data.calendar_events.length, "calendar_events")}
             ${metric("檢查清單", data.checklists.length, "checklists")}
           </div>
         </div>
@@ -1852,7 +1950,7 @@ function bindCalendarSwipe() {
   let startX = 0;
   let startY = 0;
   surface.addEventListener("touchstart", (event) => {
-    if (event.target.closest("button, input, select, textarea, [data-calendar-task]")) return;
+    if (event.target.closest("button, input, select, textarea, [data-calendar-task], [data-calendar-event-edit]")) return;
     const touch = event.changedTouches[0];
     startX = touch.clientX;
     startY = touch.clientY;
@@ -1966,6 +2064,11 @@ function bindContentEvents() {
   document.querySelectorAll("[data-task-add]").forEach((button) => button.addEventListener("click", () => openTaskDialog(null, button.dataset.taskAdd)));
   document.querySelectorAll("[data-phone-add]").forEach((button) => button.addEventListener("click", () => openTaskDialog({ date: todayISO(), status: "未完成", reminder_minutes: "0", task_type: TASK_TYPE_PHONE, phone_status: "待聯繫" })));
   document.querySelectorAll("[data-task-edit]").forEach((button) => button.addEventListener("click", () => openTaskDialog(state.workspace.tasks.find((task) => task.id === button.dataset.taskEdit))));
+  document.querySelectorAll("[data-calendar-event-edit]").forEach((button) => button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    openCalendarEventDialog(state.workspace.calendar_events.find((item) => item.id === button.dataset.calendarEventEdit));
+  }));
+  document.querySelectorAll("[data-calendar-event-add]").forEach((button) => button.addEventListener("click", () => openCalendarEventDialog(null, button.dataset.calendarEventAdd || state.selectedCalendarDate)));
   document.querySelectorAll("[data-postpone]").forEach((button) => button.addEventListener("click", () => postponeTask(button.dataset.postpone)));
   document.querySelectorAll("[data-task-select]").forEach((input) => input.addEventListener("change", () => {
     input.checked ? state.selectedTaskIds.add(input.dataset.taskSelect) : state.selectedTaskIds.delete(input.dataset.taskSelect);
@@ -2101,7 +2204,7 @@ function bindContentEvents() {
 
   document.querySelectorAll("[data-calendar-date]").forEach((button) => {
     button.addEventListener("click", (event) => {
-      if (event.target.closest("[data-calendar-task]") || Date.now() < calendarSwipeUntil) return;
+      if (event.target.closest("[data-calendar-task], [data-calendar-event-edit]") || Date.now() < calendarSwipeUntil) return;
       const date = button.dataset.calendarDate;
       const isDoubleActivation = calendarDoubleActivation(`date:${date}`);
       selectCalendarDate(date, !button.hasAttribute("data-calendar-inline"));
@@ -2132,7 +2235,7 @@ function bindContentEvents() {
     });
   });
   document.querySelectorAll("[data-drop-time]").forEach((target) => target.addEventListener("click", (event) => {
-    if (event.target.closest("[data-calendar-task]")) return;
+    if (event.target.closest("[data-calendar-task], [data-calendar-event-edit]")) return;
     const date = target.dataset.calendarDrop;
     const time = target.dataset.dropTime;
     const isDoubleActivation = calendarDoubleActivation(`time:${date}:${time}`);
@@ -2148,6 +2251,7 @@ function bindContentEvents() {
     render();
   }));
   document.querySelectorAll("[data-calendar-delete]").forEach((button) => button.addEventListener("click", () => deleteTask(button.dataset.calendarDelete)));
+  document.querySelectorAll("[data-calendar-event-delete]").forEach((button) => button.addEventListener("click", () => deleteCalendarEvent(button.dataset.calendarEventDelete)));
 
   bindCalendarSwipe();
   scrollCalendarToCurrentTime();
@@ -2224,12 +2328,15 @@ function archiveYearSelection(year) {
     .filter((project) => projectFinished(project) && String(project.completed_date || project.target_date || project.target_month || "").startsWith(yearPrefix))
     .map((project) => project.id));
   const archivedTaskIds = new Set(state.workspace.tasks.filter((task) => completedTaskIds.has(task.id) || completedProjectIds.has(task.project_id)).map((task) => task.id));
+  const archivedEventIds = new Set(state.workspace.calendar_events.filter((event) => String(event.date || "").startsWith(yearPrefix)).map((event) => event.id));
   return {
     completedTaskIds,
     completedProjectIds,
     archivedTaskIds,
+    archivedEventIds,
     projects: state.workspace.projects.filter((project) => completedProjectIds.has(project.id)),
     tasks: state.workspace.tasks.filter((task) => archivedTaskIds.has(task.id)),
+    calendar_events: state.workspace.calendar_events.filter((event) => archivedEventIds.has(event.id)),
     checklists: state.workspace.checklists.filter((group) => completedProjectIds.has(group.project_id)),
     progress_logs: state.workspace.progress_logs.filter((item) => completedProjectIds.has(item.project_id)),
     project_messages: state.workspace.project_messages.filter((item) => completedProjectIds.has(item.project_id)),
@@ -2242,6 +2349,7 @@ function buildYearArchive(year, selection) {
     id: uid("archive"), year, created_at: new Date().toISOString(),
     projects: selection.projects,
     tasks: selection.tasks,
+    calendar_events: selection.calendar_events,
     checklists: selection.checklists,
     progress_logs: selection.progress_logs,
     project_messages: selection.project_messages,
@@ -2262,28 +2370,29 @@ function exportYearData() {
   const year = selectedArchiveYear();
   if (year === null) return;
   const selection = archiveYearSelection(year);
-  if (!selection.completedTaskIds.size && !selection.completedProjectIds.size) {
+  if (!selection.completedTaskIds.size && !selection.completedProjectIds.size && !selection.archivedEventIds.size) {
     showToast(`${year} 年沒有可封存的已完成資料`);
     return;
   }
   downloadJson(buildYearArchive(year, selection), `老師專案年度資料_${year}.json`);
-  showToast(`已匯出 ${year} 年資料：${selection.completedProjectIds.size} 個專案、${selection.archivedTaskIds.size} 件工作`);
+  showToast(`已匯出 ${year} 年資料：${selection.completedProjectIds.size} 個專案、${selection.archivedTaskIds.size} 件工作、${selection.archivedEventIds.size} 項行程`);
 }
 
 function archiveYear() {
   const year = selectedArchiveYear();
   if (year === null) return;
   const selection = archiveYearSelection(year);
-  if (!selection.completedTaskIds.size && !selection.completedProjectIds.size) {
+  if (!selection.completedTaskIds.size && !selection.completedProjectIds.size && !selection.archivedEventIds.size) {
     showToast(`${year} 年沒有可封存的已完成資料`);
     return;
   }
-  if (!confirm(`將先下載完整備份，再封存 ${year} 年已完成工作 ${selection.completedTaskIds.size} 件、已完成專案 ${selection.completedProjectIds.size} 件。封存後會從日常畫面隱藏，但仍可還原。確定繼續？`)) return;
+  if (!confirm(`將先下載完整備份，再封存 ${year} 年已完成工作 ${selection.completedTaskIds.size} 件、已完成專案 ${selection.completedProjectIds.size} 件與重要行程 ${selection.archivedEventIds.size} 項。封存後會從日常畫面隱藏，但仍可還原。確定繼續？`)) return;
   exportWorkspace();
   const archive = buildYearArchive(year, selection);
   state.workspace.archives.push(archive);
-  [...selection.completedProjectIds, ...selection.archivedTaskIds, ...archive.checklists.map((item) => item.id), ...archive.progress_logs.map((item) => item.id), ...archive.project_messages.map((item) => item.id), ...archive.history.map((item) => item.id)].forEach(markDeleted);
+  [...selection.completedProjectIds, ...selection.archivedTaskIds, ...selection.archivedEventIds, ...archive.checklists.map((item) => item.id), ...archive.progress_logs.map((item) => item.id), ...archive.project_messages.map((item) => item.id), ...archive.history.map((item) => item.id)].forEach(markDeleted);
   state.workspace.tasks = state.workspace.tasks.filter((task) => !selection.archivedTaskIds.has(task.id));
+  state.workspace.calendar_events = state.workspace.calendar_events.filter((event) => !selection.archivedEventIds.has(event.id));
   state.workspace.projects = state.workspace.projects.filter((project) => !selection.completedProjectIds.has(project.id));
   state.workspace.checklists = state.workspace.checklists.filter((group) => !selection.completedProjectIds.has(group.project_id));
   state.workspace.progress_logs = state.workspace.progress_logs.filter((item) => !selection.completedProjectIds.has(item.project_id));
@@ -2308,7 +2417,7 @@ function restoreArchive(archiveId) {
     const existing = new Set(state.workspace[key].map((item) => item.id));
     (archive[key] || []).forEach((item) => { delete state.workspace.deleted_ids[item.id]; if (!existing.has(item.id)) state.workspace[key].push(item); });
   };
-  ["projects", "tasks", "checklists", "progress_logs", "project_messages", "history"].forEach(restore);
+  ["projects", "tasks", "calendar_events", "checklists", "progress_logs", "project_messages", "history"].forEach(restore);
   markDeleted(archive.id);
   state.workspace.archives = state.workspace.archives.filter((item) => item.id !== archiveId);
   saveWorkspace(); showToast("封存資料已還原"); render();
@@ -2687,6 +2796,7 @@ function deleteProject(projectId) {
   ].forEach(markDeleted);
   state.workspace.projects = state.workspace.projects.filter((item) => item.id !== projectId);
   state.workspace.tasks = state.workspace.tasks.filter((item) => item.project_id !== projectId);
+  state.workspace.calendar_events.forEach((item) => { if (item.project_id === projectId) { item.project_id = ""; item.updated_at = new Date().toISOString(); } });
   state.workspace.checklists = state.workspace.checklists.filter((item) => item.project_id !== projectId);
   state.workspace.project_messages = state.workspace.project_messages.filter((item) => item.project_id !== projectId);
   state.page = "projects";
@@ -2695,6 +2805,90 @@ function deleteProject(projectId) {
   closeModal();
   showToast("已刪除專案");
   render();
+}
+
+function openCalendarEventDialog(calendarEventItem = null, selectedDate = "") {
+  const layer = $("#modalLayer");
+  const allDay = calendarEventItem ? Boolean(calendarEventItem.all_day || !calendarEventItem.time) : true;
+  const targetProjectId = calendarEventItem?.project_id || "";
+  layer.hidden = false;
+  layer.innerHTML = `<div class="modal-card compact-modal calendar-event-modal" role="dialog" aria-modal="true">
+    <div class="modal-header"><div><h3>${calendarEventItem?.id ? "編輯重要行程" : "新增重要行程"}</h3><p class="muted">公告、會議與重要事項不會混入工作完成清單。</p></div><button class="icon-button" data-close-modal aria-label="關閉">×</button></div>
+    <form class="form-grid" id="calendarEventForm" autocomplete="off">
+      <div class="two-col"><label><span>分類</span><select class="select" name="event_type">${CALENDAR_EVENT_TYPES.map((value) => `<option ${calendarImportantType(calendarEventItem) === value ? "selected" : ""}>${value}</option>`).join("")}</select></label><label><span>日期</span><input class="search-input" type="date" name="date" value="${escapeHTML(calendarEventItem?.date || selectedDate || state.selectedCalendarDate || todayISO())}" required></label></div>
+      <label><span>標題</span><input class="search-input" name="title" required maxlength="160" value="${escapeHTML(calendarEventItem?.title || "")}" placeholder="例如：七月課程排程會議"></label>
+      <label class="calendar-all-day-toggle"><input type="checkbox" name="all_day" ${allDay ? "checked" : ""}><span>全天行程</span><small>全天提醒以當日上午 9:00 為準</small></label>
+      <div class="two-col calendar-event-time-fields" ${allDay ? "hidden" : ""}><label><span>開始時間</span><input class="search-input" type="time" name="time" value="${escapeHTML(calendarEventItem?.time || "09:00")}"></label><label><span>結束時間</span><input class="search-input" type="time" name="end_time" value="${escapeHTML(calendarEventItem?.end_time || "10:00")}"></label></div>
+      <div class="two-col"><label><span>提醒</span><select class="select" name="reminder_minutes">${[["", "不提醒"], ["0", "準時提醒"], ["10", "提前 10 分鐘"], ["60", "提前 1 小時"], ["1440", "提前 1 天"]].map(([value, label]) => `<option value="${value}" ${String(calendarEventItem?.reminder_minutes ?? "") === value ? "selected" : ""}>${label}</option>`).join("")}</select></label><label><span>所屬專案（選填）</span><select class="select" name="project_id"><option value="">不連結專案</option>${state.workspace.projects.slice().sort((a, b) => String(a.course || "").localeCompare(String(b.course || ""), "zh-Hant")).map((project) => `<option value="${escapeHTML(project.id)}" ${targetProjectId === project.id ? "selected" : ""}>${escapeHTML(project.course || project.teacher || "未命名專案")}</option>`).join("")}</select></label></div>
+      <label><span>地點／會議資訊（選填）</span><input class="search-input" name="location" maxlength="240" value="${escapeHTML(calendarEventItem?.location || "")}" placeholder="例如：Google Meet、公司會議室"></label>
+      <label><span>會議或參考連結（選填）</span><input class="search-input" name="url" type="url" inputmode="url" value="${escapeHTML(calendarEventItem?.url || "")}" placeholder="https://..."></label>
+      <label><span>備註（選填）</span><textarea class="textarea" name="note" rows="3" maxlength="2000" placeholder="補充議程、攜帶資料或注意事項">${escapeHTML(calendarEventItem?.note || "")}</textarea></label>
+      <input type="hidden" name="calendar_event_id" value="${escapeHTML(calendarEventItem?.id || "")}">
+      <div class="modal-actions split-actions">${calendarEventItem?.id ? `<button type="button" class="danger-button" data-calendar-event-delete="${escapeHTML(calendarEventItem.id)}">刪除行程</button>` : `<span></span>`}<div class="toolbar"><button type="button" class="ghost-button" data-close-modal>取消</button><button class="primary-button">儲存行程</button></div></div>
+    </form></div>`;
+  layer.querySelectorAll("[data-close-modal]").forEach((button) => button.addEventListener("click", closeModal));
+  layer.querySelector("[data-calendar-event-delete]")?.addEventListener("click", (event) => deleteCalendarEvent(event.currentTarget.dataset.calendarEventDelete));
+  const form = $("#calendarEventForm");
+  const updateTimeFields = () => {
+    const hidden = form.elements.all_day.checked;
+    const fields = form.querySelector(".calendar-event-time-fields");
+    fields.hidden = hidden;
+    fields.querySelectorAll("input").forEach((input) => { input.disabled = hidden; });
+  };
+  form.elements.all_day.addEventListener("change", updateTimeFields);
+  form.addEventListener("submit", saveCalendarEventFromForm);
+  updateTimeFields();
+  setupModalViewport(layer);
+}
+
+function saveCalendarEventFromForm(event) {
+  event.preventDefault();
+  const form = new FormData(event.currentTarget);
+  const eventId = String(form.get("calendar_event_id") || "");
+  const allDay = form.get("all_day") === "on";
+  const startTime = allDay ? "" : String(form.get("time") || "");
+  const endTime = allDay ? "" : String(form.get("end_time") || "");
+  if (!allDay && (!startTime || !endTime)) {
+    showToast("非全天行程請設定開始與結束時間");
+    return;
+  }
+  if (!allDay && timeToMinutes(endTime) <= timeToMinutes(startTime)) {
+    showToast("結束時間必須晚於開始時間");
+    return;
+  }
+  const rawUrl = String(form.get("url") || "").trim();
+  const safeUrl = rawUrl ? validExternalUrl(rawUrl) : "";
+  if (rawUrl && !safeUrl) {
+    showToast("連結必須是有效的 http 或 https 網址");
+    return;
+  }
+  const item = state.workspace.calendar_events.find((entry) => entry.id === eventId) || { id: uid("event"), created_at: new Date().toISOString() };
+  Object.assign(item, {
+    event_type: CALENDAR_EVENT_TYPES.includes(String(form.get("event_type"))) ? String(form.get("event_type")) : "重要事項",
+    title: String(form.get("title") || "").trim(),
+    date: String(form.get("date") || ""),
+    all_day: allDay,
+    time: startTime,
+    end_time: endTime,
+    reminder_minutes: String(form.get("reminder_minutes") || ""),
+    project_id: String(form.get("project_id") || ""),
+    location: String(form.get("location") || "").trim(),
+    url: safeUrl,
+    note: String(form.get("note") || "").trim(),
+    updated_at: new Date().toISOString(),
+  });
+  if (!eventId) state.workspace.calendar_events.push(item);
+  state.selectedCalendarDate = item.date;
+  addHistory(`${eventId ? "更新" : "新增"}${item.event_type}「${item.title || "未命名行程"}」`, item.project_id, "calendar_event");
+  saveWorkspace(); closeModal(); showToast("重要行程已儲存"); render();
+}
+
+function deleteCalendarEvent(eventId) {
+  const item = state.workspace.calendar_events.find((entry) => entry.id === eventId);
+  if (!item || !confirm(`確定刪除「${item.title || "這項行程"}」？`)) return;
+  markDeleted(eventId);
+  state.workspace.calendar_events = state.workspace.calendar_events.filter((entry) => entry.id !== eventId);
+  saveWorkspace(); closeModal(); showToast("重要行程已刪除"); render();
 }
 
 function openTaskDialog(task = null, projectId = "") {
@@ -3050,6 +3244,14 @@ async function logoutCloud() {
 }
 
 async function initializeApp() {
+  const initialUrl = new URL(window.location.href);
+  const calendarDate = initialUrl.searchParams.get("calendar_date");
+  if (calendarDate && parseDate(calendarDate)) {
+    state.page = "calendar";
+    selectCalendarDate(String(calendarDate).slice(0, 10), false);
+    initialUrl.searchParams.delete("calendar_date");
+    window.history.replaceState({}, "", `${initialUrl.pathname}${initialUrl.search}${initialUrl.hash}`);
+  }
   setupGlobalEvents();
   render();
   if (!CLOUD_MODE) return;

@@ -75,11 +75,13 @@ const deferredNextProject = {
 };
 const generalTask = { id: "task-mobile", project_id: project.id, title: "Today task", date: today, time: "10:00", end_time: "11:00", status: "未完成", task_type: "一般工作" };
 const phoneTask = { id: "phone-mobile", project_id: project.id, title: "Phone task", date: today, time: "11:00", status: "未完成", task_type: "電話聯繫", phone_status: "待聯繫" };
+const importantEvent = { id: "event-mobile", project_id: project.id, event_type: "會議", title: "Today meeting", date: today, all_day: false, time: "14:00", end_time: "15:00", reminder_minutes: "10", location: "Google Meet" };
 
 harness.state.workspace = {
   settings: { monthly_goal: 2 },
   projects: [project, completedProject, nextProject, deferredNextProject],
   tasks: [generalTask, phoneTask],
+  calendar_events: [importantEvent],
   checklists: [{ id: "group-mobile", project_id: project.id, name: "Launch", items: [{ id: "check-mobile", title: "Final review", done: false }] }],
   progress_logs: [], project_messages: [], history: [], archives: [], deleted_ids: {},
 };
@@ -95,6 +97,10 @@ assert(dashboard.includes("task-overflow"), "Secondary mobile task actions shoul
 assert(dashboard.includes("empty-state") || dashboard.includes("home-task-row"), "Dashboard sections should provide content or a guided empty state");
 assert(dashboard.includes(`data-project-open="${project.id}"`) && dashboard.includes("專案：Mobile Course"), "Today's work should link directly to its course project");
 assert(dashboard.includes(`data-project-month-open="${currentMonth}"`) && dashboard.includes(`data-project-month-open="${nextMonth}"`), "Dashboard should provide current and next month project goal shortcuts");
+assert(dashboard.includes("today-events-panel") && dashboard.includes("Today meeting"), "Dashboard should show today's important-event section when it has content");
+harness.state.workspace.calendar_events = [];
+assert(!harness.renderDashboard().includes("today-events-panel"), "Dashboard should hide the important-event section when today has no entries");
+harness.state.workspace.calendar_events = [importantEvent];
 assert(harness.monthlyGoalProjects(currentMonth).length === 2, "Current month goal count should include active and completed formal projects");
 assert(harness.monthlyGoalProjects(nextMonth).length === 1, "Monthly goal count should exclude deferred projects");
 assert(harness.taskDurationMinutes(generalTask) === 60 && harness.taskTimeLabel(generalTask) === "10:00–11:00", "Tasks should report their valid start-to-end duration");
@@ -191,6 +197,7 @@ assert(settings.includes("data-refresh-notifications") && settings.includes("dat
 assert(settings.includes("data-export-year") && settings.includes("data-archive-year"), "Annual data should support separate export and archive actions");
 const annualSelection = harness.archiveYearSelection(Number(today.slice(0, 4)));
 assert(annualSelection.completedProjectIds.has(completedProject.id), "Annual export should include completed projects from the selected year");
+assert(annualSelection.archivedEventIds.has(importantEvent.id), "Annual export should include important events from the selected year");
 assert(source.includes('name="task_type"'), "Task forms should preserve phone task type");
 assert(source.includes('name="end_time"') && source.includes("結束時間必須晚於開始時間"), "Task forms should capture and validate an optional end time");
 assert(source.includes('task.end_time = minutesToTime'), "Calendar dragging should preserve a task's duration");
@@ -211,6 +218,7 @@ assert(calendar.includes("mobile-calendar-agenda"), "Calendar should provide an 
 assert(calendar.includes("mobile-date-strip"), "Mobile calendar should provide a seven-day date strip");
 assert(calendar.includes("data-mobile-month-toggle"), "Full month view should remain available on mobile");
 assert(calendar.includes("10:00–11:00"), "Calendar should display a task's start and end time");
+assert(calendar.includes("Today meeting") && calendar.includes("新增重要行程"), "Calendar should display and create important events");
 
 const styles = read("../styles.css");
 assert((styles.match(/\{/g) || []).length === (styles.match(/\}/g) || []).length, "CSS braces should remain balanced");
@@ -243,15 +251,15 @@ assert(styles.includes(".task-conflict-warning") && styles.includes("border-left
 const index = read("../index.html");
 assert(index.includes("mobile-button-label"), "Mobile top bar should use a compact add label");
 assert(index.includes('href="app-icon.svg"') && index.includes('href="app-icon-192.png"'), "The app should publish browser and home-screen icons");
-assert(index.includes('styles.css?v=28') && index.includes('app.js?v=28'), "The page should request versioned application assets after deployment");
+assert(index.includes('styles.css?v=30') && index.includes('app.js?v=30'), "The page should request versioned application assets after the important-event update");
 
 const manifest = read("../manifest.json");
 assert(manifest.includes("app-icon-192.png") && manifest.includes("app-icon-512.png") && manifest.includes("maskable"), "The PWA manifest should publish installable app icons");
 
 const worker = read("../service-worker.js");
 new Function(worker);
-assert(worker.includes('teacher-operations-v29'), "PWA cache should be refreshed after the mobile login fix");
-assert(worker.includes('"/styles.css?v=28"') && worker.includes('"/app.js?v=28"'), "The PWA shell should cache versioned application assets");
+assert(worker.includes('teacher-operations-v30'), "PWA cache should be refreshed after the important-event update");
+assert(worker.includes('"/styles.css?v=30"') && worker.includes('"/app.js?v=30"'), "The PWA shell should cache versioned application assets");
 assert(worker.includes("event.respondWith(updateCache.catch"), "Online application assets should load from the network before falling back to cache");
 assert(worker.includes("icon-house.svg") && worker.includes("app-icon-512.png"), "The PWA shell should cache identity and navigation assets");
 assert(worker.includes('LOGIN_PATHS.has(url.pathname)'), "The service worker should leave login documents and assets to the network");

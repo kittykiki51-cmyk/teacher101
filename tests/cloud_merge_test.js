@@ -17,7 +17,7 @@ const harness = new Function("window", "localStorage", `${testableSource}\nretur
 function workspace(overrides = {}) {
   return {
     settings: { monthly_goal: 2 },
-    projects: [], tasks: [], checklists: [], progress_logs: [], project_messages: [], history: [], archives: [],
+    projects: [], tasks: [], calendar_events: [], checklists: [], progress_logs: [], project_messages: [], history: [], archives: [],
     deleted_ids: {},
     ...overrides,
   };
@@ -61,10 +61,17 @@ const fieldLocal = workspace({ projects: [{ id: "project-a", course: "Original",
 const fieldMerged = harness.mergeWorkspaces(fieldRemote, fieldLocal, fieldBase).projects[0];
 assert(fieldMerged.course === "Remote course" && fieldMerged.note === "Local note", "Independent fields on the same record should both survive a conflict");
 
+const eventBase = workspace({ calendar_events: [{ id: "event-a", title: "Original event", location: "Room A", updated_at: "2026-07-21T13:00:00Z" }] });
+const eventRemote = workspace({ calendar_events: [{ id: "event-a", title: "Remote title", location: "Room A", updated_at: "2026-07-21T14:00:00Z" }] });
+const eventLocal = workspace({ calendar_events: [{ id: "event-a", title: "Original event", location: "Meet", updated_at: "2026-07-21T14:01:00Z" }] });
+const eventMerged = harness.mergeWorkspaces(eventRemote, eventLocal, eventBase).calendar_events[0];
+assert(eventMerged.title === "Remote title" && eventMerged.location === "Meet", "Independent important-event edits should merge across devices");
+
 const deletedLocal = workspace({ tasks: [], deleted_ids: { "task-a": "2026-07-21T16:00:00Z" } });
 assert(harness.mergeWorkspaces(remote, deletedLocal, base).tasks.every((item) => item.id !== "task-a"), "Deletion tombstones must win during merge");
 
 assert(harness.workspaceImportIsValid(workspace()), "A complete workspace backup should be importable");
+assert(harness.workspaceImportIsValid({ projects: [], tasks: [] }), "Older backups without important events should remain importable");
 assert(!harness.workspaceImportIsValid({ projects: [], tasks: [null] }), "Malformed collection entries must be rejected");
 assert(!harness.workspaceImportIsValid({ projects: [], tasks: [], checklists: [{ id: "group", items: "broken" }] }), "Malformed nested checklist items must be rejected");
 assert(!harness.workspaceImportIsValid({ projects: [{ id: "project", stages: [[]] }], tasks: [] }), "Nested arrays must not be accepted as workspace records");

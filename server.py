@@ -51,7 +51,7 @@ LOGIN_WINDOW_SECONDS = 15 * 60
 LOGIN_ATTEMPT_LIMIT = 8
 MAX_TRACKED_LOGIN_CLIENTS = 2048
 WORKSPACE_LIST_FIELDS = (
-    "projects", "tasks", "checklists", "progress_logs",
+    "projects", "tasks", "calendar_events", "checklists", "progress_logs",
     "project_messages", "history", "archives",
 )
 
@@ -75,6 +75,7 @@ def initial_workspace() -> dict[str, Any]:
             "settings": {"monthly_goal": 2},
             "projects": [],
             "tasks": [],
+            "calendar_events": [],
             "checklists": [],
             "progress_logs": [],
             "project_messages": [],
@@ -89,7 +90,9 @@ def initial_workspace() -> dict[str, Any]:
     payload = source[len(prefix):].strip()
     if payload.endswith(";"):
         payload = payload[:-1]
-    return json.loads(payload)
+    workspace = json.loads(payload)
+    workspace.setdefault("calendar_events", [])
+    return workspace
 
 
 def initialize_database() -> None:
@@ -479,6 +482,28 @@ def due_tasks(workspace: dict[str, Any], now: datetime) -> list[dict[str, Any]]:
     return due
 
 
+def due_calendar_events(workspace: dict[str, Any], now: datetime) -> list[dict[str, Any]]:
+    due: list[dict[str, Any]] = []
+    current_minute = now.replace(second=0, microsecond=0)
+    for event in workspace.get("calendar_events", []):
+        if not event.get("date"):
+            continue
+        reminder = event.get("reminder_minutes")
+        if reminder in {None, ""}:
+            continue
+        event_time = "09:00" if event.get("all_day") or not event.get("time") else str(event.get("time"))[:5]
+        try:
+            scheduled = datetime.strptime(
+                f"{str(event['date'])[:10]} {event_time}", "%Y-%m-%d %H:%M"
+            ).replace(tzinfo=APP_TIMEZONE)
+            reminder_at = scheduled - timedelta(minutes=max(0, int(reminder)))
+        except (TypeError, ValueError):
+            continue
+        if reminder_at == current_minute:
+            due.append(event)
+    return due
+
+
 def send_push_notifications() -> None:
     public_key, private_key = vapid_keys()
     contact = os.environ.get("VAPID_CONTACT", "mailto:admin@example.com")
@@ -495,17 +520,20 @@ def send_push_notifications() -> None:
         workspace = json.loads(row["payload"])
         subscriptions = connection.execute("SELECT endpoint, subscription FROM push_subscriptions").fetchall()
         projects = {project.get("id"): project for project in workspace.get("projects", [])}
-        for task in due_tasks(workspace, now):
-            key = f"{task.get('id')}:{task.get('snooze_until') or task.get('date')}:{str(task.get('time', ''))[:5]}:{task.get('reminder_minutes', '')}"
+        due_items = [("task", task) for task in due_tasks(workspace, now)]
+        due_items.extend(("calendar_event", event) for event in due_calendar_events(workspace, now))
+        for item_type, item in due_items:
+            key = f"{item_type}:{item.get('id')}:{item.get('snooze_until') or item.get('date')}:{str(item.get('time', ''))[:5]}:{item.get('reminder_minutes', '')}"
             if connection.execute("SELECT 1 FROM sent_notifications WHERE notification_key = ?", (key,)).fetchone():
                 continue
-            project = projects.get(task.get("project_id"), {})
+            project = projects.get(item.get("project_id"), {})
+            is_calendar_event = item_type == "calendar_event"
             message = json.dumps({
-                "title": "老師專案管理提醒",
-                "body": f"{project.get('course', '我的工作')}｜{task.get('title', '工作時間到了')}",
-                "url": "/",
+                "title": "重要行程提醒" if is_calendar_event else "老師專案管理提醒",
+                "body": f"{item.get('event_type', '重要行程')}｜{item.get('title', '行程時間到了')}" if is_calendar_event else f"{project.get('course', '我的工作')}｜{item.get('title', '工作時間到了')}",
+                "url": f"/?calendar_date={str(item.get('date', ''))[:10]}" if is_calendar_event else "/",
                 "tag": key,
-                "task_id": task.get("id", ""),
+                "task_id": "" if is_calendar_event else item.get("id", ""),
             }, ensure_ascii=False)
             delivered = False
             for subscription in subscriptions:
