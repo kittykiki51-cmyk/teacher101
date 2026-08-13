@@ -11,10 +11,10 @@ const STATUS_WAITING = "等待中";
 const TASK_TYPE_PHONE = "電話聯繫";
 const ROLE_FORMAL = "正式";
 const ROLE_UNSET = "未設定";
-const CALENDAR_EVENT_TYPES = ["休假", "邀約面試", "線上面試會議", "部門會議"];
+const CALENDAR_EVENT_TYPES = ["休假", "邀約面試", "線上面試會議", "部門會議", "公告活動日"];
 const LEGACY_CALENDAR_EVENT_TYPE_MAP = {
   "要約面試": "邀約面試",
-  "公告": "部門會議",
+  "公告": "公告活動日",
   "會議": "部門會議",
   "重要事項": "部門會議",
   "錄製／上課": "部門會議",
@@ -828,7 +828,7 @@ function renderDashboard() {
 
 function renderDashboardImportantEvents(events) {
   return `<section class="home-panel today-events-panel">
-    <div class="panel-title-row"><div><h3>今日重要行程</h3><p class="muted panel-subtitle">休假、面試邀約、線上面試與部門會議集中顯示，不會混入工作完成清單。</p></div><button class="ghost-button" data-calendar-event-add="${todayISO()}">新增行程</button></div>
+    <div class="panel-title-row"><div><h3>今日重要行程</h3><p class="muted panel-subtitle">休假、面試、部門會議與公告活動日集中顯示，不會混入工作完成清單。</p></div><button class="ghost-button" data-calendar-event-add="${todayISO()}">新增行程</button></div>
     <div class="dashboard-event-list">${events.map((event) => {
       const project = projectById(event.project_id);
       return `<button type="button" class="dashboard-event-row" style="${calendarImportantColorStyle(event)}" data-calendar-event-edit="${escapeHTML(event.id)}"><span class="dashboard-event-type">${escapeHTML(calendarImportantType(event))}</span><strong>${escapeHTML(calendarImportantTimeLabel(event))}</strong><span>${escapeHTML(event.title || "未命名行程")}</span>${project ? `<small>${escapeHTML(project.course || "未命名專案")}</small>` : ""}</button>`;
@@ -1574,6 +1574,7 @@ const CALENDAR_IMPORTANT_COLORS = {
   "邀約面試": { color: "#3f5ecf", soft: "#eef1ff", border: "#cbd3fb" },
   "線上面試會議": { color: "#1f7b69", soft: "#e9f6f2", border: "#b9dfd5" },
   "部門會議": { color: "#596573", soft: "#f0f3f5", border: "#cfd6dc" },
+  "公告活動日": { color: "#7457c5", soft: "#f2eefb", border: "#d8cdf3" },
 };
 
 function calendarImportantType(event) {
@@ -2826,7 +2827,7 @@ function openCalendarEventDialog(calendarEventItem = null, selectedDate = "") {
   const targetProjectId = calendarEventItem?.project_id || "";
   layer.hidden = false;
   layer.innerHTML = `<div class="modal-card compact-modal calendar-event-modal" role="dialog" aria-modal="true">
-    <div class="modal-header"><div><h3>${calendarEventItem?.id ? "編輯重要行程" : "新增重要行程"}</h3><p class="muted">休假、面試邀約、線上面試與部門會議不會混入工作完成清單。</p></div><button class="icon-button" data-close-modal aria-label="關閉">×</button></div>
+    <div class="modal-header"><div><h3>${calendarEventItem?.id ? "編輯重要行程" : "新增重要行程"}</h3><p class="muted">休假、面試、部門會議與公告活動日不會混入工作完成清單。</p></div><button class="icon-button" data-close-modal aria-label="關閉">×</button></div>
     <form class="form-grid" id="calendarEventForm" autocomplete="off">
       <div class="two-col"><label><span>分類</span><select class="select" name="event_type">${CALENDAR_EVENT_TYPES.map((value) => `<option ${calendarImportantType(calendarEventItem) === value ? "selected" : ""}>${value}</option>`).join("")}</select></label><label><span>日期</span><input class="search-input" type="date" name="date" value="${escapeHTML(calendarEventItem?.date || selectedDate || state.selectedCalendarDate || todayISO())}" required></label></div>
       <label><span>標題</span><input class="search-input" name="title" required maxlength="160" value="${escapeHTML(calendarEventItem?.title || "")}" placeholder="例如：七月課程排程會議"></label>

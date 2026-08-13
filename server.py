@@ -54,10 +54,10 @@ WORKSPACE_LIST_FIELDS = (
     "projects", "tasks", "calendar_events", "checklists", "progress_logs",
     "project_messages", "history", "archives",
 )
-CALENDAR_EVENT_TYPES = {"休假", "邀約面試", "線上面試會議", "部門會議"}
+CALENDAR_EVENT_TYPES = {"休假", "邀約面試", "線上面試會議", "部門會議", "公告活動日"}
 LEGACY_CALENDAR_EVENT_TYPE_MAP = {
     "要約面試": "邀約面試",
-    "公告": "部門會議",
+    "公告": "公告活動日",
     "會議": "部門會議",
     "重要事項": "部門會議",
     "錄製／上課": "部門會議",

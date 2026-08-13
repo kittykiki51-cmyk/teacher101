@@ -12,7 +12,7 @@ const browserWindow = { location: { protocol: "file:" }, INITIAL_WORKSPACE: null
 const harness = new Function("window", "localStorage", `${testableSource}\nreturn { state, todayISO, parseDate, humanDate, renderMonthCalendar, renderWeekCalendar, renderDayCalendar, renderCalendarPanel, renderCalendarPanelTask, renderCalendarPanelEvent, renderMobileCalendarAgenda, calendarEventsOnDate, calendarImportantTimeLabel, calendarImportantType, calendarImportantColor, calendarColor, calendarTaskKind, calendarHours, calendarDoubleActivation, CALENDAR_EVENT_TYPES };`)(browserWindow, storage);
 
 const today = harness.todayISO();
-assert(JSON.stringify(harness.CALENDAR_EVENT_TYPES) === JSON.stringify(["休假", "邀約面試", "線上面試會議", "部門會議"]), "Important events should expose the four requested color-coded categories");
+assert(JSON.stringify(harness.CALENDAR_EVENT_TYPES) === JSON.stringify(["休假", "邀約面試", "線上面試會議", "部門會議", "公告活動日"]), "Important events should expose the five requested color-coded categories");
 harness.state.workspace = {
   settings: { monthly_goal: 2 },
   projects: [
@@ -69,6 +69,8 @@ assert(harness.calendarImportantColor({ event_type: "休假" }).color === "#b948
 assert(harness.calendarImportantColor({ event_type: "邀約面試" }).color === "#3f5ecf", "Interview invitations should use blue");
 assert(harness.calendarImportantColor({ event_type: "線上面試會議" }).color === "#1f7b69", "Online interviews should use green");
 assert(harness.calendarImportantColor({ event_type: "部門會議" }).color === "#596573", "Department meetings should use gray");
+assert(harness.calendarImportantColor({ event_type: "公告活動日" }).color === "#7457c5", "Announcement event days should use purple");
+assert(harness.calendarImportantType({ event_type: "公告" }) === "公告活動日", "Legacy announcements should migrate to announcement event days");
 const projectPanelTask = harness.renderCalendarPanelTask(harness.state.workspace.tasks[1]);
 const personalPanelTask = harness.renderCalendarPanelTask(harness.state.workspace.tasks[0]);
 const completedProjectPanelTask = harness.renderCalendarPanelTask({ ...harness.state.workspace.tasks[1], status: "已完成" });
