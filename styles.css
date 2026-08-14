@@ -960,7 +960,10 @@ body[data-page="projectDetail"] .content {
 }
 
 .search-input,
-.select {
+.select,
+.input {
+  min-width: 0;
+  width: 100%;
   min-height: 38px;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -975,6 +978,7 @@ body[data-page="projectDetail"] .content {
 
 .search-input:focus,
 .select:focus,
+.input:focus,
 .textarea:focus {
   border-color: var(--primary);
   outline: 3px solid var(--primary-soft);
@@ -1725,6 +1729,12 @@ body[data-page="projectDetail"] .content {
   align-items: start;
 }
 
+.project-detail-stack {
+  display: grid;
+  min-width: 0;
+  gap: 12px;
+}
+
 .project-work-card {
   min-width: 0;
   overflow: hidden;
@@ -1870,12 +1880,186 @@ button:disabled {
   padding: 14px 18px;
 }
 
+.billing-settings {
+  display: grid;
+  grid-template-columns: 110px minmax(145px, 0.8fr) minmax(180px, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-alt);
+}
+
+.billing-settings label,
+.lesson-duration-row label {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.billing-settings label > span,
+.lesson-duration-row label > span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.billing-settings .input,
+.billing-settings .select,
+.billing-settings button {
+  min-height: 36px;
+}
+
+.lesson-duration-table {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.lesson-duration-head,
+.lesson-duration-row {
+  display: grid;
+  grid-template-columns: 58px 54px 54px 54px minmax(150px, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  min-width: 520px;
+}
+
+.lesson-duration-head {
+  padding: 7px 9px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-alt);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.lesson-duration-row {
+  padding: 7px 9px;
+  border-bottom: 1px solid var(--border);
+}
+
+.lesson-duration-row:last-child {
+  border-bottom: 0;
+}
+
+.lesson-duration-row label > span {
+  display: none;
+}
+
+.lesson-duration-row .input {
+  width: 100%;
+  min-height: 34px;
+  padding: 0 7px;
+  font-size: 13px;
+}
+
+.lesson-duration-actions {
+  display: flex;
+  gap: 5px;
+}
+
+.lesson-duration-actions button {
+  min-height: 32px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+.billing-empty {
+  padding: 18px;
+  text-align: center;
+}
+
+.billing-summary {
+  display: grid;
+  grid-template-columns: 0.6fr 1.25fr 0.8fr 1fr;
+  gap: 1px;
+  margin-top: 10px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--border);
+}
+
+.billing-summary > span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 9px 10px;
+  background: var(--surface);
+}
+
+.billing-summary small {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.billing-summary strong {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+
+.billing-summary .billing-total {
+  background: var(--primary-soft);
+  color: var(--primary-dark);
+}
+
 .message-compose {
   display: grid;
-  grid-template-columns: 138px minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: end;
   gap: 8px;
   margin: 10px 0 8px;
+}
+
+.message-type-picker {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(92px, 1fr));
+  gap: 5px;
+  min-width: 310px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.message-type-picker legend {
+  margin-bottom: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.message-type-option {
+  --message-color: #20252b;
+  --message-soft: #f4f5f6;
+  position: relative;
+  cursor: pointer;
+}
+
+.message-type-option input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.message-type-option span {
+  display: grid;
+  min-height: 42px;
+  place-items: center;
+  border: 1px solid var(--message-border, var(--border));
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--message-color);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.message-type-option input:checked + span {
+  border-color: var(--message-color);
+  background: var(--message-soft);
+  box-shadow: inset 0 0 0 1px var(--message-color);
 }
 
 .message-compose-field {
@@ -1898,12 +2082,40 @@ button:disabled {
   min-height: 42px;
 }
 
-.message-row {
+.message-reply-context {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  border-left: 4px solid #405fc7;
+  border-radius: 5px;
+  background: #f0f3ff;
+  padding: 7px 9px;
+  font-size: 12px;
+}
+
+.message-reply-context span {
+  color: #405fc7;
+  font-weight: 800;
+}
+
+.message-reply-context strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.message-tone-teacher {
   --message-color: #20252b;
   --message-soft: #f4f5f6;
   --message-border: #d9dde0;
+}
+
+.message-row {
   display: grid;
-  grid-template-columns: 118px minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto 32px;
   align-items: center;
   gap: 10px;
   margin-top: 7px;
@@ -1927,13 +2139,16 @@ button:disabled {
   --message-border: #efc8ce;
 }
 
-.message-row-type {
-  min-height: 32px;
-  border-color: var(--message-border);
-  color: var(--message-color);
+.message-type-badge {
+  min-width: 76px;
+  border: 1px solid var(--message-border);
+  border-radius: 5px;
   background: var(--surface);
+  color: var(--message-color);
+  padding: 5px 7px;
+  text-align: center;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 800;
 }
 
 .message-copy {
@@ -1953,10 +2168,81 @@ button:disabled {
   color: var(--text);
 }
 
-.message-row > button {
+.message-reply-button {
   min-height: 26px;
   padding: 0 8px;
   font-size: 13px;
+}
+
+.message-thread-replies {
+  display: grid;
+  margin-left: 42px;
+}
+
+.message-reply-row {
+  margin-top: 4px;
+}
+
+.important-message-section {
+  margin-bottom: 9px;
+  padding: 7px;
+  border: 1px solid #efc8ce;
+  border-radius: 6px;
+  background: #fff7f8;
+}
+
+.important-message-section h4 {
+  margin: 0 2px 4px;
+  color: #b64255;
+  font-size: 12px;
+}
+
+.message-actions {
+  position: relative;
+}
+
+.message-actions summary {
+  display: grid;
+  width: 30px;
+  min-height: 30px;
+  cursor: pointer;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface);
+  font-size: 18px;
+  list-style: none;
+}
+
+.message-actions summary::-webkit-details-marker {
+  display: none;
+}
+
+.message-action-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 8;
+  display: grid;
+  width: 150px;
+  gap: 5px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  padding: 7px;
+  box-shadow: 0 10px 24px rgba(24, 31, 39, 0.14);
+}
+
+.message-action-menu strong {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.message-action-menu button {
+  min-height: 30px;
+  border-color: var(--message-border, var(--border));
+  color: var(--message-color, var(--text));
+  font-size: 11px;
 }
 
 .project-history-card p {
@@ -3802,11 +4088,15 @@ button.day-cell:hover {
 
   .summary-buttons {
     grid-column: 1 / -1;
-    justify-content: flex-start;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+    justify-content: stretch;
   }
 
   .summary-buttons button {
-    flex: 1 1 auto;
+    min-width: 0;
+    width: 100%;
   }
 
   .project-mobile-tabs {
@@ -3814,13 +4104,23 @@ button.day-cell:hover {
     top: 84px;
     z-index: 17;
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     margin-bottom: 8px;
     overflow: hidden;
     border: 1px solid var(--border);
     border-radius: 7px;
     background: var(--surface);
     box-shadow: 0 4px 12px rgba(26, 42, 53, 0.05);
+  }
+
+  .project-summary-card,
+  .project-summary-main,
+  .project-summary-actions,
+  .project-detail-columns,
+  .project-detail-stack,
+  .project-mobile-tabs {
+    min-width: 0;
+    max-width: 100%;
   }
 
   .mobile-account-panel {
@@ -3833,12 +4133,17 @@ button.day-cell:hover {
   }
 
   .project-mobile-tabs button {
+    min-width: 0;
     min-height: 40px;
+    overflow: hidden;
     border: 0;
     border-right: 1px solid var(--border);
     background: var(--surface);
     color: var(--muted);
-    font-size: 12px;
+    padding: 0 2px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 11px;
   }
 
   .project-mobile-tabs button:last-child {
@@ -3852,6 +4157,10 @@ button.day-cell:hover {
   }
 
   .project-detail-columns {
+    display: block;
+  }
+
+  .project-detail-stack {
     display: block;
   }
 
@@ -3905,20 +4214,122 @@ button.day-cell:hover {
     grid-template-columns: 1fr;
   }
 
+  .message-type-picker {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    min-width: 0;
+    width: 100%;
+  }
+
+  .message-type-option span {
+    min-height: 38px;
+    padding: 4px;
+    font-size: 11px;
+  }
+
   .message-compose button {
     width: 100%;
   }
 
-  .message-row {
+  .message-reply-context {
     grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .message-reply-context > span {
+    grid-column: 1;
+  }
+
+  .message-reply-context > strong {
+    grid-column: 1;
+    white-space: normal;
+  }
+
+  .message-reply-context > button {
+    grid-column: 2;
+    grid-row: 1 / 3;
+    width: auto;
+  }
+
+  .message-row {
+    grid-template-columns: auto minmax(0, 1fr) 32px;
     gap: 7px;
     padding: 8px;
     font-size: 11px;
   }
 
-  .message-row-type {
+  .message-type-badge {
+    min-width: 66px;
+    padding: 4px;
+    font-size: 10px;
+  }
+
+  .message-actions {
+    grid-column: 3;
+    grid-row: 1;
+  }
+
+  .message-reply-button {
+    grid-column: 2;
+    grid-row: 2;
+    justify-self: start;
+    width: auto !important;
+  }
+
+  .message-thread-replies {
+    margin-left: 14px;
+  }
+
+  .billing-card-header {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .billing-card-header button {
+    flex: 0 0 auto;
+  }
+
+  .billing-settings {
+    grid-template-columns: 1fr;
+  }
+
+  .lesson-duration-table {
+    overflow: visible;
+    border: 0;
+  }
+
+  .lesson-duration-head {
+    display: none;
+  }
+
+  .lesson-duration-row {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    min-width: 0;
+    margin-bottom: 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface-alt);
+    padding: 8px;
+  }
+
+  .lesson-duration-row label > span {
+    display: block;
+  }
+
+  .lesson-duration-row label,
+  .lesson-duration-row .input {
+    min-width: 0;
+  }
+
+  .lesson-duration-note,
+  .lesson-duration-actions {
     grid-column: 1 / -1;
-    width: 100%;
+  }
+
+  .lesson-duration-actions button {
+    flex: 1;
+  }
+
+  .billing-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .calendar-main-header {

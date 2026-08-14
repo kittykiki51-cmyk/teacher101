@@ -14,7 +14,8 @@ assert(!source.includes('[...STAGE_NAMES, "已上架", "已完成", "已放棄"]
 const testableSource = source.replace(/\ninitializeApp\(\);\s*$/, "");
 const storage = { getItem: () => null, setItem: () => null, removeItem: () => null };
 const browserWindow = { location: { protocol: "file:" }, INITIAL_WORKSPACE: null };
-const harness = new Function("window", "localStorage", "confirm", "crypto", `${testableSource}
+function MockFormData(target) { this.get = (name) => target.values?.[name] ?? ""; }
+const harness = new Function("window", "localStorage", "confirm", "crypto", "FormData", "requestAnimationFrame", `${testableSource}
 function runProjectActionForTest(action, id) {
   const originalToast = showToast;
   const originalRender = render;
@@ -28,12 +29,19 @@ return {
   state, todayISO, monthKey, offsetMonthKey, renderDashboard, renderProjects, renderProjectDetail, renderSettings, renderCalendar,
   projectMilestone, projectFinished, projectGanttSchedule, projectGanttPriority, projectGanttTooltip, taskList,
   normalizedStageValue, projectStageDisplay, STAGE_DEFINITIONS, PROJECT_MESSAGE_TYPES, projectMessageType,
+  BILLING_METHODS, lessonDurationSeconds, formatLongDuration, billableHours, projectBillingSummary,
   projectCompletionSummary, archiveYearSelection, notificationSettingsState, validEmailAddress,
   monthlyGoalProjects, taskDurationMinutes, taskTimeLabel, taskInterval, taskTimeConflicts,
   completeProjectForTest: (id) => runProjectActionForTest(completeProject, id),
   reopenProjectForTest: (id) => runProjectActionForTest(reopenProject, id),
   updateProjectMessageTypeForTest: (id, type) => runProjectActionForTest(() => updateProjectMessageType(id, type), id),
-};`)(browserWindow, storage, () => true, { randomUUID: () => "12345678-1234-1234-1234-123456789abc" });
+  startProjectMessageReplyForTest: (id) => runProjectActionForTest(startProjectMessageReply, id),
+  addProjectMessageForTest: (values) => runProjectActionForTest(() => addProjectMessage({ preventDefault() {}, currentTarget: { values } })),
+  saveProjectBillingSettingsForTest: (values) => runProjectActionForTest(() => saveProjectBillingSettings({ preventDefault() {}, currentTarget: { values } })),
+  addLessonDurationRecordForTest: (id) => runProjectActionForTest(addLessonDurationRecord, id),
+  saveLessonDurationRecordForTest: (id, values) => runProjectActionForTest(() => saveLessonDurationRecord({ preventDefault() {}, currentTarget: { dataset: { durationRecord: id }, values } })),
+  deleteLessonDurationRecordForTest: (id) => runProjectActionForTest(deleteLessonDurationRecord, id),
+};`)(browserWindow, storage, () => true, { randomUUID: () => "12345678-1234-1234-1234-123456789abc" }, MockFormData, () => {});
 
 const today = harness.todayISO();
 const currentMonth = harness.monthKey(new Date());
@@ -50,6 +58,12 @@ const project = {
   current_stage: "完成規格書／規格書撰寫／影音錄製中",
   status: "進行中",
   cooperation_status: "順利",
+  hourly_rate: 1500,
+  billing_method: "exact",
+  lesson_durations: [
+    { id: "duration-1", lesson_number: 1, hours: 0, minutes: 57, seconds: 30, note: "Lesson one" },
+    { id: "duration-2", lesson_number: 2, hours: 1, minutes: 2, seconds: 30, note: "Lesson two" },
+  ],
   links: { "講師 Gmail": "teacher@gmail.com" },
 };
 const completedProject = {
@@ -78,7 +92,7 @@ const generalTask = { id: "task-mobile", project_id: project.id, title: "Today t
 const phoneTask = { id: "phone-mobile", project_id: project.id, title: "Phone task", date: today, time: "11:00", status: "未完成", task_type: "電話聯繫", phone_status: "待聯繫" };
 const importantEvent = { id: "event-mobile", project_id: project.id, event_type: "線上面試會議", title: "Today meeting", date: today, all_day: false, time: "14:00", end_time: "15:00", reminder_minutes: "10", location: "Google Meet" };
 const teacherMessage = { id: "message-teacher", project_id: project.id, time: `${today} 09:00`, text: "Legacy teacher message" };
-const replyMessage = { id: "message-reply", project_id: project.id, time: `${today} 09:10`, text: "My reply", message_type: "我的回覆" };
+const replyMessage = { id: "message-reply", project_id: project.id, time: `${today} 09:10`, text: "My reply", message_type: "我的回覆", reply_to: teacherMessage.id };
 const importantMessage = { id: "message-important", project_id: project.id, time: `${today} 09:20`, text: "Important note", message_type: "重要訊息" };
 
 harness.state.workspace = {
@@ -181,19 +195,42 @@ const workDetail = harness.renderProjectDetail();
 assert(workDetail.includes("project-mobile-tabs"), "Project details should provide mobile tabs");
 assert(workDetail.includes('data-project-complete="project-mobile"'), "Active project details should provide a complete-project action");
 assert(workDetail.includes('data-project-mobile-panel="work"'), "Project work panel should be available");
+assert(workDetail.includes('data-project-mobile-panel="billing"') && workDetail.includes("影片時數與鐘點費"), "Project details should provide the duration and hourly-fee panel");
 assert(workDetail.includes('data-project-mobile-panel="checklist"'), "Project checklist panel should be available");
 assert(workDetail.includes('data-project-mobile-panel="message"'), "Project message panel should be available");
 assert(workDetail.includes('data-project-mobile-panel="history"'), "Project history panel should be available");
 assert(workDetail.includes('data-open-email="teacher@gmail.com"') && workDetail.includes("寄信給講師"), "Project details should open an email to the teacher");
+const billingSummary = harness.projectBillingSummary(project);
+assert(billingSummary.totalSeconds === 7200 && billingSummary.actualHours === 2 && billingSummary.estimatedFee === 3000, "Duration records should total seconds and estimate the hourly fee accurately");
+assert(harness.formatLongDuration(7200) === "2 小時 0 分 0 秒", "Total duration should use a readable hour-minute-second label");
+assert(harness.billableHours(3660, "half_hour") === 1.5 && harness.billableHours(3660, "hour") === 2, "Optional billing rules should round the total duration predictably");
+assert(workDetail.includes("2 小時 0 分 0 秒") && workDetail.includes("NT$3,000"), "The billing panel should display the total duration and estimated fee");
+assert(workDetail.includes('data-duration-add="project-mobile"') && workDetail.includes('data-duration-record="duration-1"'), "The billing panel should allow lessons to be added and individually saved");
+harness.saveProjectBillingSettingsForTest({ mode: "直播", hourly_rate: "1800", billing_method: "half_hour" });
+assert(project.mode === "live" && project.hourly_rate === 1800 && project.billing_method === "half_hour", "Billing settings should save the course type, hourly rate, and billing method");
+harness.saveLessonDurationRecordForTest("duration-1", { lesson_number: "1", hours: "1", minutes: "0", seconds: "0", note: "Updated lesson" });
+assert(project.lesson_durations[0].hours === 1 && project.lesson_durations[0].note === "Updated lesson", "An individual lesson duration should save valid hour-minute-second values");
+harness.addLessonDurationRecordForTest(project.id);
+assert(project.lesson_durations.length === 3 && project.lesson_durations[2].lesson_number === 3, "Adding a lesson should create the next lesson number");
+harness.deleteLessonDurationRecordForTest(project.lesson_durations[2].id);
+assert(project.lesson_durations.length === 2, "An individual lesson duration should be removable after confirmation");
 
 harness.state.projectMobileTab = "message";
 const messageDetail = harness.renderProjectDetail();
 assert(messageDetail.includes('project-board-card project-mobile-panel active'), "Selected mobile project tab should activate its panel");
 assert(JSON.stringify(harness.PROJECT_MESSAGE_TYPES) === JSON.stringify(["老師留言", "我的回覆", "重要訊息"]), "Message categories should contain only the requested three options");
 assert(harness.projectMessageType(teacherMessage) === "老師留言", "Legacy messages without a category should remain visible as teacher messages");
-assert(messageDetail.includes('name="message_type"') && messageDetail.includes("留言分類"), "New messages should provide a category selector");
+assert(messageDetail.includes("message-type-picker") && messageDetail.includes('name="message_type"'), "New messages should provide three direct category buttons");
 assert(messageDetail.includes("message-tone-teacher") && messageDetail.includes("message-tone-reply") && messageDetail.includes("message-tone-important"), "Message rows should render distinct teacher, reply, and important tones");
-assert(messageDetail.includes('data-message-type="message-reply"'), "Existing messages should allow their category to be changed directly");
+assert(messageDetail.includes('data-message-reply="message-teacher"') && messageDetail.includes("message-thread-replies"), "Teacher messages should provide an individual reply action and group linked replies underneath");
+assert(messageDetail.includes('data-message-set-type="message-reply"') && !messageDetail.includes("message-row-type"), "Existing messages should use a compact action menu instead of an always-visible selector");
+assert(messageDetail.indexOf("Important note") < messageDetail.indexOf("Legacy teacher message"), "Important messages should remain pinned above regular message threads");
+harness.startProjectMessageReplyForTest(teacherMessage.id);
+const replyingDetail = harness.renderProjectDetail();
+assert(replyingDetail.includes("正在回覆") && replyingDetail.includes('value="我的回覆" checked'), "Replying should preselect the user's blue reply category and show the source message");
+harness.addProjectMessageForTest({ message: "A linked reply", message_type: "老師留言" });
+const linkedReply = harness.state.workspace.project_messages[0];
+assert(linkedReply.message_type === "我的回覆" && linkedReply.reply_to === teacherMessage.id, "Submitting an individual reply should link it to the source and force the reply category");
 harness.updateProjectMessageTypeForTest(replyMessage.id, "重要訊息");
 assert(replyMessage.message_type === "重要訊息" && Boolean(replyMessage.updated_at), "Changing a message category should persist the new type and update time");
 harness.state.selectedProjectId = completedProject.id;
@@ -237,6 +274,8 @@ const dashboardPanelStart = styles.indexOf("\n.home-panel {", styles.indexOf(".h
 const dashboardPanelStyles = styles.slice(dashboardPanelStart, styles.indexOf("\n.today-work-panel {", dashboardPanelStart));
 assert(dashboardPanelStyles.includes("background: var(--surface)") && dashboardPanelStyles.includes("border: 1px solid var(--border)"), "Dashboard panels should retain their white framed surfaces");
 assert(styles.includes(".project-mobile-tabs"), "Mobile project tab styles should exist");
+assert(styles.includes(".billing-summary") && styles.includes(".lesson-duration-row"), "Duration and fee calculator styles should exist");
+assert(styles.includes(".message-type-picker") && styles.includes(".message-thread-replies"), "Message category and linked-reply styles should exist");
 assert(styles.includes("place-items: end stretch"), "Mobile dialogs should open as bottom sheets");
 assert(styles.includes("env(safe-area-inset-bottom)"), "Mobile controls should account for device safe areas");
 assert(styles.includes("position: sticky") && styles.includes("top: 84px"), "Mobile project tabs should remain visible while scrolling");
@@ -262,15 +301,15 @@ assert(styles.includes(".task-conflict-warning") && styles.includes("border-left
 const index = read("../index.html");
 assert(index.includes("mobile-button-label"), "Mobile top bar should use a compact add label");
 assert(index.includes('href="app-icon.svg"') && index.includes('href="app-icon-192.png"'), "The app should publish browser and home-screen icons");
-assert(index.includes('styles.css?v=34') && index.includes('app.js?v=34'), "The page should request versioned application assets after the message-category update");
+assert(index.includes('styles.css?v=35') && index.includes('app.js?v=35'), "The page should request versioned assets after the message and billing update");
 
 const manifest = read("../manifest.json");
 assert(manifest.includes("app-icon-192.png") && manifest.includes("app-icon-512.png") && manifest.includes("maskable"), "The PWA manifest should publish installable app icons");
 
 const worker = read("../service-worker.js");
 new Function(worker);
-assert(worker.includes('teacher-operations-v34'), "PWA cache should be refreshed after the message-category update");
-assert(worker.includes('"/styles.css?v=34"') && worker.includes('"/app.js?v=34"'), "The PWA shell should cache versioned application assets");
+assert(worker.includes('teacher-operations-v35'), "PWA cache should be refreshed after the message and billing update");
+assert(worker.includes('"/styles.css?v=35"') && worker.includes('"/app.js?v=35"'), "The PWA shell should cache versioned application assets");
 assert(worker.includes("event.respondWith(updateCache.catch"), "Online application assets should load from the network before falling back to cache");
 assert(worker.includes("icon-house.svg") && worker.includes("app-icon-512.png"), "The PWA shell should cache identity and navigation assets");
 assert(worker.includes('LOGIN_PATHS.has(url.pathname)'), "The service worker should leave login documents and assets to the network");

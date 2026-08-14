@@ -13,6 +13,11 @@ const ROLE_FORMAL = "正式";
 const ROLE_UNSET = "未設定";
 const CALENDAR_EVENT_TYPES = ["休假", "邀約面試", "線上面試會議", "部門會議", "公告活動日"];
 const PROJECT_MESSAGE_TYPES = ["老師留言", "我的回覆", "重要訊息"];
+const BILLING_METHODS = [
+  { value: "exact", label: "依實際秒數" },
+  { value: "half_hour", label: "總時數進位至半小時" },
+  { value: "hour", label: "總時數進位至一小時" },
+];
 const LEGACY_CALENDAR_EVENT_TYPE_MAP = {
   "要約面試": "邀約面試",
   "公告": "公告活動日",
@@ -78,6 +83,7 @@ let state = {
   calendarMobileMonthOpen: false,
   calendarMobilePanelOpen: false,
   projectMobileTab: "work",
+  replyingToMessageId: "",
   globalQuery: "",
   pageBeforeSearch: "dashboard",
   selectedProjectId: "",
@@ -543,8 +549,67 @@ function projectMessageTone(message) {
   }[projectMessageType(message)];
 }
 
-function projectMessageTypeOptions(selectedType) {
-  return PROJECT_MESSAGE_TYPES.map((type) => `<option value="${type}" ${type === selectedType ? "selected" : ""}>${type}</option>`).join("");
+function projectMessageById(messageId) {
+  return state.workspace.project_messages.find((message) => message.id === messageId);
+}
+
+function projectMessageRoots(projectId) {
+  const messages = projectMessages(projectId);
+  const ids = new Set(messages.map((message) => message.id));
+  return messages.filter((message) => !message.reply_to || !ids.has(message.reply_to));
+}
+
+function projectMessageReplies(projectId, parentId) {
+  return projectMessages(projectId).filter((message) => message.reply_to === parentId).reverse();
+}
+
+function projectLessonDurations(project) {
+  if (!Array.isArray(project?.lesson_durations)) return [];
+  return project.lesson_durations.slice().sort((a, b) => (Number(a.lesson_number) || 0) - (Number(b.lesson_number) || 0));
+}
+
+function lessonDurationSeconds(record) {
+  const hours = Math.max(0, Number(record?.hours) || 0);
+  const minutes = Math.max(0, Math.min(59, Number(record?.minutes) || 0));
+  const seconds = Math.max(0, Math.min(59, Number(record?.seconds) || 0));
+  return Math.round(hours * 3600 + minutes * 60 + seconds);
+}
+
+function formatLongDuration(totalSeconds) {
+  const safe = Math.max(0, Math.round(Number(totalSeconds) || 0));
+  const hours = Math.floor(safe / 3600);
+  const minutes = Math.floor((safe % 3600) / 60);
+  const seconds = safe % 60;
+  return `${hours} 小時 ${minutes} 分 ${seconds} 秒`;
+}
+
+function billableHours(totalSeconds, method = "exact") {
+  const safe = Math.max(0, Number(totalSeconds) || 0);
+  if (!safe) return 0;
+  if (method === "half_hour") return Math.ceil(safe / 1800) / 2;
+  if (method === "hour") return Math.ceil(safe / 3600);
+  return safe / 3600;
+}
+
+function projectBillingSummary(project) {
+  const records = projectLessonDurations(project);
+  const totalSeconds = records.reduce((sum, record) => sum + lessonDurationSeconds(record), 0);
+  const method = BILLING_METHODS.some((item) => item.value === project?.billing_method) ? project.billing_method : "exact";
+  const hourlyRate = Math.max(0, Number(project?.hourly_rate) || 0);
+  const chargedHours = billableHours(totalSeconds, method);
+  return {
+    records,
+    totalSeconds,
+    actualHours: totalSeconds / 3600,
+    chargedHours,
+    hourlyRate,
+    estimatedFee: Math.round(chargedHours * hourlyRate),
+    method,
+  };
+}
+
+function formatTWD(value) {
+  return `NT$${new Intl.NumberFormat("zh-TW", { maximumFractionDigits: 0 }).format(Math.max(0, Number(value) || 0))}`;
 }
 
 function tasksForProject(projectId) {
@@ -1382,6 +1447,74 @@ function projectCards(projects, emptyText) {
   }).join("");
 }
 
+function renderMessageTypePicker(selectedType) {
+  return `<fieldset class="message-type-picker"><legend>留言分類</legend>${PROJECT_MESSAGE_TYPES.map((type) => {
+    const tone = projectMessageTone({ message_type: type });
+    return `<label class="message-type-option message-tone-${tone}"><input type="radio" name="message_type" value="${type}" ${type === selectedType ? "checked" : ""}><span>${type}</span></label>`;
+  }).join("")}</fieldset>`;
+}
+
+function renderProjectMessage(message, nested = false) {
+  const type = projectMessageType(message);
+  const canReply = type !== "我的回覆";
+  return `<article class="message-row message-tone-${projectMessageTone(message)} ${nested ? "message-reply-row" : ""}">
+    <span class="message-type-badge">${escapeHTML(type)}</span>
+    <span class="message-copy"><time>${escapeHTML((message.time || message.created_at || "").replace("T", " ").slice(0, 16))}</time><span>${escapeHTML(message.text || "")}</span></span>
+    ${canReply ? `<button class="ghost-button message-reply-button" data-message-reply="${escapeHTML(message.id)}">回覆</button>` : ""}
+    <details class="message-actions">
+      <summary aria-label="留言操作" title="留言操作">⋯</summary>
+      <div class="message-action-menu">
+        <strong>變更分類</strong>
+        ${PROJECT_MESSAGE_TYPES.map((option) => `<button type="button" class="message-action-type message-tone-${projectMessageTone({ message_type: option })}" data-message-set-type="${escapeHTML(message.id)}" data-message-type-value="${option}" ${option === type ? "disabled" : ""}>${option}</button>`).join("")}
+        <button type="button" class="danger-button" data-message-delete="${escapeHTML(message.id)}">刪除留言</button>
+      </div>
+    </details>
+  </article>`;
+}
+
+function renderProjectMessageThread(message, projectId) {
+  const replies = projectMessageReplies(projectId, message.id);
+  return `<div class="message-thread">${renderProjectMessage(message)}${replies.length ? `<div class="message-thread-replies">${replies.map((reply) => renderProjectMessage(reply, true)).join("")}</div>` : ""}</div>`;
+}
+
+function renderLessonDurationRow(record) {
+  return `<form class="lesson-duration-row" data-duration-record="${escapeHTML(record.id)}">
+    <label><span>堂數</span><input class="input" type="number" name="lesson_number" min="1" max="999" step="1" inputmode="numeric" value="${Math.max(1, Number(record.lesson_number) || 1)}" required></label>
+    <label><span>時</span><input class="input" type="number" name="hours" min="0" max="99" step="1" inputmode="numeric" value="${Math.max(0, Number(record.hours) || 0)}" required></label>
+    <label><span>分</span><input class="input" type="number" name="minutes" min="0" max="59" step="1" inputmode="numeric" value="${Math.max(0, Math.min(59, Number(record.minutes) || 0))}" required></label>
+    <label><span>秒</span><input class="input" type="number" name="seconds" min="0" max="59" step="1" inputmode="numeric" value="${Math.max(0, Math.min(59, Number(record.seconds) || 0))}" required></label>
+    <label class="lesson-duration-note"><span>備註／檔案名稱</span><input class="input" name="note" maxlength="120" value="${escapeHTML(record.note || "")}" placeholder="例如：第一堂剪輯完成"></label>
+    <div class="lesson-duration-actions"><button class="primary-button" type="submit">儲存</button><button class="danger-button" type="button" data-duration-delete="${escapeHTML(record.id)}">刪除</button></div>
+  </form>`;
+}
+
+function renderProjectBillingCard(project) {
+  const summary = projectBillingSummary(project);
+  const mode = project.mode === "live" ? "直播" : "影音";
+  return `<section class="project-work-card project-billing-card project-mobile-panel ${state.projectMobileTab === "billing" ? "active" : ""}" data-project-mobile-panel="billing">
+    <div class="detail-card-header billing-card-header">
+      <div><h3>影片時數與鐘點費</h3><p class="muted">依剪輯後檔案時長試算，實際核薪仍以最終約定為準。</p></div>
+      <button class="primary-button" data-duration-add="${escapeHTML(project.id)}">新增堂數</button>
+    </div>
+    <form class="billing-settings" id="billingSettingsForm">
+      <label><span>課程類型</span><select class="select" name="mode"><option ${mode === "影音" ? "selected" : ""}>影音</option><option ${mode === "直播" ? "selected" : ""}>直播</option></select></label>
+      <label><span>鐘點費（元／小時）</span><input class="input" type="number" name="hourly_rate" min="0" max="1000000" step="1" inputmode="numeric" value="${summary.hourlyRate || ""}" placeholder="例如：1500"></label>
+      <label><span>計費方式</span><select class="select" name="billing_method">${BILLING_METHODS.map((item) => `<option value="${item.value}" ${item.value === summary.method ? "selected" : ""}>${item.label}</option>`).join("")}</select></label>
+      <button class="ghost-button" type="submit">儲存設定</button>
+    </form>
+    <div class="lesson-duration-table" role="table" aria-label="影片堂數時長">
+      <div class="lesson-duration-head" role="row"><span>堂數</span><span>時</span><span>分</span><span>秒</span><span>備註／檔案名稱</span><span>操作</span></div>
+      <div class="lesson-duration-body">${summary.records.map(renderLessonDurationRow).join("") || `<p class="muted billing-empty">尚未記錄影片時長，請新增第一堂。</p>`}</div>
+    </div>
+    <div class="billing-summary" aria-label="鐘點費試算結果">
+      <span><small>總堂數</small><strong>${summary.records.length} 堂</strong></span>
+      <span><small>總時數</small><strong>${formatLongDuration(summary.totalSeconds)}</strong></span>
+      <span><small>計費時數</small><strong>${summary.chargedHours.toFixed(3)} 小時</strong></span>
+      <span class="billing-total"><small>預估鐘點費</small><strong>${formatTWD(summary.estimatedFee)}</strong></span>
+    </div>
+  </section>`;
+}
+
 function renderProjectDetail() {
   const project = projectById(state.selectedProjectId);
   if (!project) {
@@ -1396,7 +1529,11 @@ function renderProjectDetail() {
   const pending = tasksForProject(project.id).filter((task) => task.status !== STATUS_COMPLETED).sort(sortTasks);
   const completed = tasksForProject(project.id).filter((task) => task.status === STATUS_COMPLETED).sort(sortTasks);
   const groups = checklistGroups(project.id);
-  const messages = projectMessages(project.id).slice(0, 8);
+  const messageRoots = projectMessageRoots(project.id);
+  const importantMessages = messageRoots.filter((message) => projectMessageType(message) === "重要訊息");
+  const regularMessages = messageRoots.filter((message) => projectMessageType(message) !== "重要訊息");
+  const replyingMessage = projectMessageById(state.replyingToMessageId);
+  const activeReply = replyingMessage?.project_id === project.id ? replyingMessage : null;
   const history = state.workspace.history.filter((item) => item.project_id === project.id && importantHistory(item)).slice(0, 5);
   const links = project.links || {};
   const selectedCount = [...state.selectedTaskIds].filter((id) => pending.some((task) => task.id === id)).length;
@@ -1426,10 +1563,12 @@ function renderProjectDetail() {
       </div>
     </section>
     <nav class="project-mobile-tabs" aria-label="專案內容分頁">
-      ${[["work", "工作"], ["checklist", "清單"], ["message", "留言"], ["history", "紀錄"]].map(([value, label]) => `<button class="${state.projectMobileTab === value ? "active" : ""}" data-project-mobile-tab="${value}">${label}</button>`).join("")}
+      ${[["work", "工作"], ["billing", "時數"], ["checklist", "清單"], ["message", "留言"], ["history", "紀錄"]].map(([value, label]) => `<button class="${state.projectMobileTab === value ? "active" : ""}" data-project-mobile-tab="${value}">${label}</button>`).join("")}
     </nav>
     <div class="project-detail-columns">
-      <section class="project-work-card project-mobile-panel ${state.projectMobileTab === "work" ? "active" : ""}" data-project-mobile-panel="work">
+      <div class="project-detail-stack">
+        ${renderProjectBillingCard(project)}
+        <section class="project-work-card project-mobile-panel ${state.projectMobileTab === "work" ? "active" : ""}" data-project-mobile-panel="work">
         <div class="detail-card-header">
           <div><h3>工作排程</h3><p class="muted">所有日期、狀態與下一步都以這裡為準；可勾選後批次刪除。</p></div>
           <div class="toolbar">
@@ -1442,7 +1581,8 @@ function renderProjectDetail() {
           ${completed.length ? `<div class="completed-toggle"><strong>已完成（${completed.length}）</strong><button class="ghost-button" data-toggle-completed="${escapeHTML(project.id)}">${state.expandedCompletedProjectIds.has(project.id) ? "收起" : "展開"}</button></div>` : ""}
           ${state.expandedCompletedProjectIds.has(project.id) ? completed.map(renderCompletedProjectTask).join("") : ""}
         </div>
-      </section>
+        </section>
+      </div>
       <section class="project-work-card project-mobile-panel ${state.projectMobileTab === "checklist" ? "active" : ""}" data-project-mobile-panel="checklist">
         <div class="detail-card-header">
           <div><h3>檢查清單</h3><p class="muted">確認完整度，不進入月曆。</p></div>
@@ -1458,20 +1598,17 @@ function renderProjectDetail() {
       </section>
     </div>
     <section class="project-board-card project-mobile-panel ${state.projectMobileTab === "message" ? "active" : ""}" data-project-mobile-panel="message">
-      <div><h3>留言板</h3><p class="muted">選擇留言分類後新增；送出時會自動加上日期時間。</p></div>
+      <div><h3>留言板</h3><p class="muted">老師留言可個別回覆，重要訊息會固定顯示在最上方。</p></div>
       <form class="message-compose" id="messageForm">
-        <label class="message-compose-field"><span>留言分類</span><select class="select" name="message_type" aria-label="留言分類">${projectMessageTypeOptions("老師留言")}</select></label>
+        ${activeReply ? `<div class="message-reply-context"><span>正在回覆</span><strong>${escapeHTML(projectMessageType(activeReply))}｜${escapeHTML(String(activeReply.text || "").slice(0, 80))}</strong><button type="button" class="ghost-button" data-message-reply-cancel>取消</button></div>` : ""}
+        ${renderMessageTypePicker(activeReply ? "我的回覆" : "老師留言")}
         <label class="message-compose-field"><span>留言內容</span><textarea class="textarea" name="message" rows="3" aria-label="留言內容"></textarea></label>
         <button class="primary-button" type="submit">新增留言</button>
       </form>
-      <div class="message-list">${messages.map((message) => {
-        const type = projectMessageType(message);
-        return `<div class="message-row message-tone-${projectMessageTone(message)}">
-          <select class="select message-row-type" data-message-type="${escapeHTML(message.id)}" aria-label="變更留言分類">${projectMessageTypeOptions(type)}</select>
-          <span class="message-copy"><time>${escapeHTML((message.time || message.created_at || "").replace("T", " ").slice(0, 16))}</time><span>${escapeHTML(message.text || "")}</span></span>
-          <button class="danger-button" data-message-delete="${escapeHTML(message.id)}">刪除</button>
-        </div>`;
-      }).join("") || `<p class="muted">尚無留言。</p>`}</div>
+      <div class="message-list">
+        ${importantMessages.length ? `<section class="important-message-section"><h4>重要訊息</h4>${importantMessages.map((message) => renderProjectMessageThread(message, project.id)).join("")}</section>` : ""}
+        ${regularMessages.map((message) => renderProjectMessageThread(message, project.id)).join("") || (!importantMessages.length ? `<p class="muted">尚無留言。</p>` : "")}
+      </div>
     </section>
     <section class="project-history-card project-mobile-panel ${state.projectMobileTab === "history" ? "active" : ""}" data-project-mobile-panel="history">
       <h3>重要紀錄</h3>
@@ -2076,6 +2213,7 @@ function bindContentEvents() {
     button.addEventListener("click", () => {
       state.selectedProjectId = button.dataset.projectOpen;
       state.projectMobileTab = "work";
+      state.replyingToMessageId = "";
       state.page = "projectDetail";
       render();
     });
@@ -2137,6 +2275,11 @@ function bindContentEvents() {
 
   const messageForm = $("#messageForm");
   if (messageForm) messageForm.addEventListener("submit", addProjectMessage);
+  const billingSettingsForm = $("#billingSettingsForm");
+  if (billingSettingsForm) billingSettingsForm.addEventListener("submit", saveProjectBillingSettings);
+  document.querySelectorAll("[data-duration-record]").forEach((form) => form.addEventListener("submit", saveLessonDurationRecord));
+  document.querySelectorAll("[data-duration-add]").forEach((button) => button.addEventListener("click", () => addLessonDurationRecord(button.dataset.durationAdd)));
+  document.querySelectorAll("[data-duration-delete]").forEach((button) => button.addEventListener("click", () => deleteLessonDurationRecord(button.dataset.durationDelete)));
   const goalSettingsForm = $("#goalSettingsForm");
   if (goalSettingsForm) goalSettingsForm.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -2150,7 +2293,9 @@ function bindContentEvents() {
     showToast("本月目標已更新");
     render();
   });
-  document.querySelectorAll("[data-message-type]").forEach((select) => select.addEventListener("change", () => updateProjectMessageType(select.dataset.messageType, select.value)));
+  document.querySelectorAll("[data-message-set-type]").forEach((button) => button.addEventListener("click", () => updateProjectMessageType(button.dataset.messageSetType, button.dataset.messageTypeValue)));
+  document.querySelectorAll("[data-message-reply]").forEach((button) => button.addEventListener("click", () => startProjectMessageReply(button.dataset.messageReply)));
+  document.querySelectorAll("[data-message-reply-cancel]").forEach((button) => button.addEventListener("click", cancelProjectMessageReply));
   document.querySelectorAll("[data-message-delete]").forEach((button) => button.addEventListener("click", () => deleteProjectMessage(button.dataset.messageDelete)));
   document.querySelectorAll("[data-open-url]").forEach((button) => button.addEventListener("click", () => {
     const url = validExternalUrl(button.dataset.openUrl);
@@ -3135,15 +3280,106 @@ function saveChecklistTemplate() {
   saveWorkspace(); showToast("已儲存為範本");
 }
 
+function saveProjectBillingSettings(event) {
+  event.preventDefault();
+  const project = projectById(state.selectedProjectId);
+  if (!project) return;
+  const form = new FormData(event.currentTarget);
+  const hourlyRateText = String(form.get("hourly_rate") || "").trim();
+  const hourlyRate = hourlyRateText ? Number(hourlyRateText) : 0;
+  const billingMethod = String(form.get("billing_method") || "exact");
+  if (!Number.isFinite(hourlyRate) || hourlyRate < 0 || hourlyRate > 1000000) {
+    showToast("鐘點費請輸入 0 到 1,000,000 之間的金額");
+    return;
+  }
+  project.mode = form.get("mode") === "直播" ? "live" : "recorded";
+  project.hourly_rate = hourlyRate;
+  project.billing_method = BILLING_METHODS.some((item) => item.value === billingMethod) ? billingMethod : "exact";
+  project.last_update = todayISO();
+  project.updated_at = new Date().toISOString();
+  saveWorkspace(); showToast("時數與鐘點費設定已儲存"); render();
+}
+
+function addLessonDurationRecord(projectId) {
+  const project = projectById(projectId);
+  if (!project) return;
+  project.lesson_durations = Array.isArray(project.lesson_durations) ? project.lesson_durations : [];
+  const nextLessonNumber = project.lesson_durations.reduce((maximum, record) => Math.max(maximum, Number(record.lesson_number) || 0), 0) + 1;
+  const now = new Date().toISOString();
+  const record = { id: uid("duration"), lesson_number: nextLessonNumber, hours: 0, minutes: 0, seconds: 0, note: "", created_at: now, updated_at: now };
+  project.lesson_durations.push(record);
+  project.updated_at = now;
+  saveWorkspace(); render();
+  requestAnimationFrame(() => document.querySelector(`[data-duration-record="${record.id}"] input[name="hours"]`)?.focus());
+}
+
+function saveLessonDurationRecord(event) {
+  event.preventDefault();
+  const project = projectById(state.selectedProjectId);
+  const record = project?.lesson_durations?.find((item) => item.id === event.currentTarget.dataset.durationRecord);
+  if (!project || !record) return;
+  const form = new FormData(event.currentTarget);
+  const lessonNumber = Number(form.get("lesson_number"));
+  const hours = Number(form.get("hours"));
+  const minutes = Number(form.get("minutes"));
+  const seconds = Number(form.get("seconds"));
+  if (![lessonNumber, hours, minutes, seconds].every(Number.isInteger)
+      || lessonNumber < 1 || lessonNumber > 999 || hours < 0 || hours > 99
+      || minutes < 0 || minutes > 59 || seconds < 0 || seconds > 59) {
+    showToast("請確認堂數與時分秒格式");
+    return;
+  }
+  if (hours === 0 && minutes === 0 && seconds === 0) {
+    showToast("影片時長不可全部為 0");
+    return;
+  }
+  if (project.lesson_durations.some((item) => item.id !== record.id && Number(item.lesson_number) === lessonNumber)) {
+    showToast(`第 ${lessonNumber} 堂已經存在`);
+    return;
+  }
+  Object.assign(record, { lesson_number: lessonNumber, hours, minutes, seconds, note: String(form.get("note") || "").trim(), updated_at: new Date().toISOString() });
+  project.updated_at = record.updated_at;
+  saveWorkspace(); showToast(`第 ${lessonNumber} 堂時長已儲存`); render();
+}
+
+function deleteLessonDurationRecord(recordId) {
+  const project = projectById(state.selectedProjectId);
+  const record = project?.lesson_durations?.find((item) => item.id === recordId);
+  if (!project || !record || !confirm(`確定刪除第 ${record.lesson_number || "?"} 堂的時長紀錄？`)) return;
+  project.lesson_durations = project.lesson_durations.filter((item) => item.id !== recordId);
+  project.updated_at = new Date().toISOString();
+  saveWorkspace(); showToast("已刪除堂數紀錄"); render();
+}
+
+function startProjectMessageReply(messageId) {
+  const message = projectMessageById(messageId);
+  if (!message || message.project_id !== state.selectedProjectId || projectMessageType(message) === "我的回覆") return;
+  state.replyingToMessageId = messageId;
+  render();
+  requestAnimationFrame(() => {
+    const textarea = document.querySelector("#messageForm textarea");
+    textarea?.focus();
+    textarea?.scrollIntoView({ block: "center", behavior: "smooth" });
+  });
+}
+
+function cancelProjectMessageReply() {
+  state.replyingToMessageId = "";
+  render();
+}
+
 function addProjectMessage(event) {
   event.preventDefault();
   const formData = new FormData(event.currentTarget);
   const text = String(formData.get("message") || "").trim();
   const requestedType = String(formData.get("message_type") || "");
-  const messageType = PROJECT_MESSAGE_TYPES.includes(requestedType) ? requestedType : "老師留言";
+  const replyTarget = projectMessageById(state.replyingToMessageId);
+  const validReplyTarget = replyTarget?.project_id === state.selectedProjectId && projectMessageType(replyTarget) !== "我的回覆" ? replyTarget : null;
+  const messageType = validReplyTarget ? "我的回覆" : PROJECT_MESSAGE_TYPES.includes(requestedType) ? requestedType : "老師留言";
   if (!text) { showToast("請先輸入留言內容"); return; }
   const now = new Date().toISOString();
-  state.workspace.project_messages.unshift({ id: uid("msg"), project_id: state.selectedProjectId, time: now.slice(0, 16).replace("T", " "), text, message_type: messageType, created_at: now, updated_at: now });
+  state.workspace.project_messages.unshift({ id: uid("msg"), project_id: state.selectedProjectId, time: now.slice(0, 16).replace("T", " "), text, message_type: messageType, reply_to: validReplyTarget?.id || "", created_at: now, updated_at: now });
+  state.replyingToMessageId = "";
   addHistory(`新增留言：${text.slice(0, 28)}`, state.selectedProjectId, "message");
   saveWorkspace(); showToast("已新增留言"); render();
 }
@@ -3159,6 +3395,7 @@ function updateProjectMessageType(messageId, messageType) {
 
 function deleteProjectMessage(messageId) {
   if (!confirm("確定刪除這則留言？")) return;
+  if (state.replyingToMessageId === messageId) state.replyingToMessageId = "";
   markDeleted(messageId);
   state.workspace.project_messages = state.workspace.project_messages.filter((item) => item.id !== messageId);
   saveWorkspace(); showToast("已刪除留言"); render();
