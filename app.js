@@ -12,6 +12,7 @@ const TASK_TYPE_PHONE = "電話聯繫";
 const ROLE_FORMAL = "正式";
 const ROLE_UNSET = "未設定";
 const CALENDAR_EVENT_TYPES = ["休假", "邀約面試", "線上面試會議", "部門會議", "公告活動日"];
+const PROJECT_MESSAGE_TYPES = ["老師留言", "我的回覆", "重要訊息"];
 const LEGACY_CALENDAR_EVENT_TYPE_MAP = {
   "要約面試": "邀約面試",
   "公告": "公告活動日",
@@ -528,6 +529,22 @@ function projectMessages(projectId) {
   return state.workspace.project_messages
     .filter((message) => message.project_id === projectId)
     .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
+}
+
+function projectMessageType(message) {
+  return PROJECT_MESSAGE_TYPES.includes(message?.message_type) ? message.message_type : "老師留言";
+}
+
+function projectMessageTone(message) {
+  return {
+    "老師留言": "teacher",
+    "我的回覆": "reply",
+    "重要訊息": "important",
+  }[projectMessageType(message)];
+}
+
+function projectMessageTypeOptions(selectedType) {
+  return PROJECT_MESSAGE_TYPES.map((type) => `<option value="${type}" ${type === selectedType ? "selected" : ""}>${type}</option>`).join("");
 }
 
 function tasksForProject(projectId) {
@@ -1441,12 +1458,20 @@ function renderProjectDetail() {
       </section>
     </div>
     <section class="project-board-card project-mobile-panel ${state.projectMobileTab === "message" ? "active" : ""}" data-project-mobile-panel="message">
-      <div><h3>留言板</h3><p class="muted">記錄跟老師說了什麼、目前狀況；送出時會自動加上日期時間。</p></div>
+      <div><h3>留言板</h3><p class="muted">選擇留言分類後新增；送出時會自動加上日期時間。</p></div>
       <form class="message-compose" id="messageForm">
-        <textarea class="textarea" name="message" rows="3" aria-label="留言內容"></textarea>
+        <label class="message-compose-field"><span>留言分類</span><select class="select" name="message_type" aria-label="留言分類">${projectMessageTypeOptions("老師留言")}</select></label>
+        <label class="message-compose-field"><span>留言內容</span><textarea class="textarea" name="message" rows="3" aria-label="留言內容"></textarea></label>
         <button class="primary-button" type="submit">新增留言</button>
       </form>
-      <div class="message-list">${messages.map((message) => `<div class="message-row"><span>${escapeHTML((message.time || message.created_at || "").replace("T", " ").slice(0, 16))}　${escapeHTML(message.text || "")}</span><button class="danger-button" data-message-delete="${escapeHTML(message.id)}">刪除</button></div>`).join("") || `<p class="muted">尚無留言。</p>`}</div>
+      <div class="message-list">${messages.map((message) => {
+        const type = projectMessageType(message);
+        return `<div class="message-row message-tone-${projectMessageTone(message)}">
+          <select class="select message-row-type" data-message-type="${escapeHTML(message.id)}" aria-label="變更留言分類">${projectMessageTypeOptions(type)}</select>
+          <span class="message-copy"><time>${escapeHTML((message.time || message.created_at || "").replace("T", " ").slice(0, 16))}</time><span>${escapeHTML(message.text || "")}</span></span>
+          <button class="danger-button" data-message-delete="${escapeHTML(message.id)}">刪除</button>
+        </div>`;
+      }).join("") || `<p class="muted">尚無留言。</p>`}</div>
     </section>
     <section class="project-history-card project-mobile-panel ${state.projectMobileTab === "history" ? "active" : ""}" data-project-mobile-panel="history">
       <h3>重要紀錄</h3>
@@ -2125,6 +2150,7 @@ function bindContentEvents() {
     showToast("本月目標已更新");
     render();
   });
+  document.querySelectorAll("[data-message-type]").forEach((select) => select.addEventListener("change", () => updateProjectMessageType(select.dataset.messageType, select.value)));
   document.querySelectorAll("[data-message-delete]").forEach((button) => button.addEventListener("click", () => deleteProjectMessage(button.dataset.messageDelete)));
   document.querySelectorAll("[data-open-url]").forEach((button) => button.addEventListener("click", () => {
     const url = validExternalUrl(button.dataset.openUrl);
@@ -3111,11 +3137,24 @@ function saveChecklistTemplate() {
 
 function addProjectMessage(event) {
   event.preventDefault();
-  const text = String(new FormData(event.currentTarget).get("message") || "").trim();
+  const formData = new FormData(event.currentTarget);
+  const text = String(formData.get("message") || "").trim();
+  const requestedType = String(formData.get("message_type") || "");
+  const messageType = PROJECT_MESSAGE_TYPES.includes(requestedType) ? requestedType : "老師留言";
   if (!text) { showToast("請先輸入留言內容"); return; }
-  state.workspace.project_messages.unshift({ id: uid("msg"), project_id: state.selectedProjectId, time: new Date().toISOString().slice(0, 16).replace("T", " "), text });
+  const now = new Date().toISOString();
+  state.workspace.project_messages.unshift({ id: uid("msg"), project_id: state.selectedProjectId, time: now.slice(0, 16).replace("T", " "), text, message_type: messageType, created_at: now, updated_at: now });
   addHistory(`新增留言：${text.slice(0, 28)}`, state.selectedProjectId, "message");
   saveWorkspace(); showToast("已新增留言"); render();
+}
+
+function updateProjectMessageType(messageId, messageType) {
+  if (!PROJECT_MESSAGE_TYPES.includes(messageType)) return;
+  const message = state.workspace.project_messages.find((item) => item.id === messageId);
+  if (!message || projectMessageType(message) === messageType) return;
+  message.message_type = messageType;
+  message.updated_at = new Date().toISOString();
+  saveWorkspace(); showToast("留言分類已更新"); render();
 }
 
 function deleteProjectMessage(messageId) {

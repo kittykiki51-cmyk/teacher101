@@ -27,11 +27,12 @@ function runProjectActionForTest(action, id) {
 return {
   state, todayISO, monthKey, offsetMonthKey, renderDashboard, renderProjects, renderProjectDetail, renderSettings, renderCalendar,
   projectMilestone, projectFinished, projectGanttSchedule, projectGanttPriority, projectGanttTooltip, taskList,
-  normalizedStageValue, projectStageDisplay, STAGE_DEFINITIONS,
+  normalizedStageValue, projectStageDisplay, STAGE_DEFINITIONS, PROJECT_MESSAGE_TYPES, projectMessageType,
   projectCompletionSummary, archiveYearSelection, notificationSettingsState, validEmailAddress,
   monthlyGoalProjects, taskDurationMinutes, taskTimeLabel, taskInterval, taskTimeConflicts,
   completeProjectForTest: (id) => runProjectActionForTest(completeProject, id),
   reopenProjectForTest: (id) => runProjectActionForTest(reopenProject, id),
+  updateProjectMessageTypeForTest: (id, type) => runProjectActionForTest(() => updateProjectMessageType(id, type), id),
 };`)(browserWindow, storage, () => true, { randomUUID: () => "12345678-1234-1234-1234-123456789abc" });
 
 const today = harness.todayISO();
@@ -76,6 +77,9 @@ const deferredNextProject = {
 const generalTask = { id: "task-mobile", project_id: project.id, title: "Today task", date: today, time: "10:00", end_time: "11:00", status: "未完成", task_type: "一般工作" };
 const phoneTask = { id: "phone-mobile", project_id: project.id, title: "Phone task", date: today, time: "11:00", status: "未完成", task_type: "電話聯繫", phone_status: "待聯繫" };
 const importantEvent = { id: "event-mobile", project_id: project.id, event_type: "線上面試會議", title: "Today meeting", date: today, all_day: false, time: "14:00", end_time: "15:00", reminder_minutes: "10", location: "Google Meet" };
+const teacherMessage = { id: "message-teacher", project_id: project.id, time: `${today} 09:00`, text: "Legacy teacher message" };
+const replyMessage = { id: "message-reply", project_id: project.id, time: `${today} 09:10`, text: "My reply", message_type: "我的回覆" };
+const importantMessage = { id: "message-important", project_id: project.id, time: `${today} 09:20`, text: "Important note", message_type: "重要訊息" };
 
 harness.state.workspace = {
   settings: { monthly_goal: 2 },
@@ -83,7 +87,7 @@ harness.state.workspace = {
   tasks: [generalTask, phoneTask],
   calendar_events: [importantEvent],
   checklists: [{ id: "group-mobile", project_id: project.id, name: "Launch", items: [{ id: "check-mobile", title: "Final review", done: false }] }],
-  progress_logs: [], project_messages: [], history: [], archives: [], deleted_ids: {},
+  progress_logs: [], project_messages: [teacherMessage, replyMessage, importantMessage], history: [], archives: [], deleted_ids: {},
 };
 harness.state.selectedProjectId = project.id;
 
@@ -185,6 +189,13 @@ assert(workDetail.includes('data-open-email="teacher@gmail.com"') && workDetail.
 harness.state.projectMobileTab = "message";
 const messageDetail = harness.renderProjectDetail();
 assert(messageDetail.includes('project-board-card project-mobile-panel active'), "Selected mobile project tab should activate its panel");
+assert(JSON.stringify(harness.PROJECT_MESSAGE_TYPES) === JSON.stringify(["老師留言", "我的回覆", "重要訊息"]), "Message categories should contain only the requested three options");
+assert(harness.projectMessageType(teacherMessage) === "老師留言", "Legacy messages without a category should remain visible as teacher messages");
+assert(messageDetail.includes('name="message_type"') && messageDetail.includes("留言分類"), "New messages should provide a category selector");
+assert(messageDetail.includes("message-tone-teacher") && messageDetail.includes("message-tone-reply") && messageDetail.includes("message-tone-important"), "Message rows should render distinct teacher, reply, and important tones");
+assert(messageDetail.includes('data-message-type="message-reply"'), "Existing messages should allow their category to be changed directly");
+harness.updateProjectMessageTypeForTest(replyMessage.id, "重要訊息");
+assert(replyMessage.message_type === "重要訊息" && Boolean(replyMessage.updated_at), "Changing a message category should persist the new type and update time");
 harness.state.selectedProjectId = completedProject.id;
 const completedDetail = harness.renderProjectDetail();
 assert(completedDetail.includes('data-project-reopen="project-completed"'), "Completed project details should provide a reopen action");
@@ -251,15 +262,15 @@ assert(styles.includes(".task-conflict-warning") && styles.includes("border-left
 const index = read("../index.html");
 assert(index.includes("mobile-button-label"), "Mobile top bar should use a compact add label");
 assert(index.includes('href="app-icon.svg"') && index.includes('href="app-icon-192.png"'), "The app should publish browser and home-screen icons");
-assert(index.includes('styles.css?v=33') && index.includes('app.js?v=33'), "The page should request versioned application assets after the announcement-event update");
+assert(index.includes('styles.css?v=34') && index.includes('app.js?v=34'), "The page should request versioned application assets after the message-category update");
 
 const manifest = read("../manifest.json");
 assert(manifest.includes("app-icon-192.png") && manifest.includes("app-icon-512.png") && manifest.includes("maskable"), "The PWA manifest should publish installable app icons");
 
 const worker = read("../service-worker.js");
 new Function(worker);
-assert(worker.includes('teacher-operations-v33'), "PWA cache should be refreshed after the announcement-event update");
-assert(worker.includes('"/styles.css?v=33"') && worker.includes('"/app.js?v=33"'), "The PWA shell should cache versioned application assets");
+assert(worker.includes('teacher-operations-v34'), "PWA cache should be refreshed after the message-category update");
+assert(worker.includes('"/styles.css?v=34"') && worker.includes('"/app.js?v=34"'), "The PWA shell should cache versioned application assets");
 assert(worker.includes("event.respondWith(updateCache.catch"), "Online application assets should load from the network before falling back to cache");
 assert(worker.includes("icon-house.svg") && worker.includes("app-icon-512.png"), "The PWA shell should cache identity and navigation assets");
 assert(worker.includes('LOGIN_PATHS.has(url.pathname)'), "The service worker should leave login documents and assets to the network");
