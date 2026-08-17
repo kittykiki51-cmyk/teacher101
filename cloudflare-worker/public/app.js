@@ -88,7 +88,7 @@ let state = {
   calendarView: "month",
   calendarMobileMonthOpen: false,
   calendarMobilePanelOpen: false,
-  projectMobileTab: "work",
+  projectMobileTab: "billing",
   replyingToMessageId: "",
   globalQuery: "",
   pageBeforeSearch: "dashboard",
@@ -1600,16 +1600,22 @@ function renderProjectMessageThread(message, projectId) {
 function renderLessonDurationRow(record, project) {
   const delivery = lessonDeliveryState(project, record);
   const deliveryComplete = LESSON_DELIVERY_STEPS.every(({ field }) => delivery[field]);
+  const completedSteps = LESSON_DELIVERY_STEPS.filter(({ field }) => delivery[field]).length;
+  const lessonNumber = Math.max(1, Number(record.lesson_number) || 1);
   return `<form class="lesson-duration-row ${deliveryComplete ? "delivery-complete" : ""}" data-duration-record="${escapeHTML(record.id)}">
+    <div class="lesson-row-heading">
+      <strong>第 ${lessonNumber} 堂</strong>
+      <span class="${deliveryComplete ? "complete" : ""}" data-lesson-delivery-label>${deliveryComplete ? "交付完成" : `${completedSteps}/4 項完成`}</span>
+    </div>
     <div class="lesson-duration-fields">
-      <label><span>堂數</span><input class="input" type="number" name="lesson_number" min="1" max="999" step="1" inputmode="numeric" value="${Math.max(1, Number(record.lesson_number) || 1)}" required></label>
+      <label><span>堂數</span><input class="input" type="number" name="lesson_number" min="1" max="999" step="1" inputmode="numeric" value="${lessonNumber}" required></label>
       <label><span>時</span><input class="input" type="number" name="hours" min="0" max="99" step="1" inputmode="numeric" value="${Math.max(0, Number(record.hours) || 0)}" required></label>
       <label><span>分</span><input class="input" type="number" name="minutes" min="0" max="59" step="1" inputmode="numeric" value="${Math.max(0, Math.min(59, Number(record.minutes) || 0))}" required></label>
       <label><span>秒</span><input class="input" type="number" name="seconds" min="0" max="59" step="1" inputmode="numeric" value="${Math.max(0, Math.min(59, Number(record.seconds) || 0))}" required></label>
       <label class="lesson-duration-note"><span>備註／檔案名稱</span><input class="input" name="note" maxlength="120" value="${escapeHTML(record.note || "")}" placeholder="例如：第一堂剪輯完成"></label>
       <div class="lesson-duration-actions"><button class="primary-button" type="submit">儲存</button><button class="danger-button" type="button" data-duration-delete="${escapeHTML(record.id)}">刪除</button></div>
     </div>
-    <fieldset class="lesson-delivery-checks"><legend>第 ${Math.max(1, Number(record.lesson_number) || 1)} 堂交付進度</legend>
+    <fieldset class="lesson-delivery-checks"><legend>第 ${lessonNumber} 堂交付進度</legend>
       ${LESSON_DELIVERY_STEPS.map(({ field, label }) => `<label class="lesson-delivery-option ${delivery[field] ? "checked" : ""}"><input type="checkbox" data-duration-delivery="${escapeHTML(record.id)}" data-duration-field="${field}" ${delivery[field] ? "checked" : ""}><span>${label}</span></label>`).join("")}
     </fieldset>
   </form>`;
@@ -1649,7 +1655,8 @@ function renderProjectDetail() {
     return `<p class="muted">找不到這個專案。</p>`;
   }
   const showBilling = project.mode !== "live";
-  if (!showBilling && state.projectMobileTab === "billing") state.projectMobileTab = "work";
+  const mobileTabs = [...(showBilling ? [["billing", "時數"]] : []), ["checklist", "清單"], ["message", "留言"], ["history", "紀錄"]];
+  if (!mobileTabs.some(([value]) => value === state.projectMobileTab)) state.projectMobileTab = mobileTabs[0][0];
   const finished = projectFinished(project);
   const risk = projectRisk(project);
   const next = projectNextStep(project);
@@ -1691,27 +1698,25 @@ function renderProjectDetail() {
         </div>
       </div>
     </section>
-    <nav class="project-mobile-tabs" aria-label="專案內容分頁">
-      ${[["work", "工作"], ...(showBilling ? [["billing", "時數"]] : []), ["checklist", "清單"], ["message", "留言"], ["history", "紀錄"]].map(([value, label]) => `<button class="${state.projectMobileTab === value ? "active" : ""}" data-project-mobile-tab="${value}">${label}</button>`).join("")}
-    </nav>
-    <div class="project-detail-columns">
-      <div class="project-detail-stack">
-        ${showBilling ? renderProjectBillingCard(project) : ""}
-        <section class="project-work-card project-mobile-panel ${state.projectMobileTab === "work" ? "active" : ""}" data-project-mobile-panel="work">
-        <div class="detail-card-header">
-          <div><h3>工作排程</h3><p class="muted">所有日期、狀態與下一步都以這裡為準；可勾選後批次刪除。</p></div>
-          <div class="toolbar">
-            <button class="danger-button" data-delete-selected ${selectedCount ? "" : "disabled"}>${selectedCount ? `刪除已選 (${selectedCount})` : "刪除已選"}</button>
-            <button class="primary-button" data-task-add="${escapeHTML(project.id)}">新增工作排程</button>
-          </div>
+    <section class="project-work-card project-schedule-card">
+      <div class="detail-card-header">
+        <div><h3>工作排程</h3><p class="muted">所有日期、狀態與下一步都以這裡為準；可勾選後批次刪除。</p></div>
+        <div class="toolbar">
+          <button class="danger-button" data-delete-selected ${selectedCount ? "" : "disabled"}>${selectedCount ? `刪除已選 (${selectedCount})` : "刪除已選"}</button>
+          <button class="primary-button" data-task-add="${escapeHTML(project.id)}">新增工作排程</button>
         </div>
-        <div class="compact-list">
-          ${pending.map(renderProjectTask).join("") || `<p class="muted empty-detail">目前沒有未完成工作。</p>`}
-          ${completed.length ? `<div class="completed-toggle"><strong>已完成（${completed.length}）</strong><button class="ghost-button" data-toggle-completed="${escapeHTML(project.id)}">${state.expandedCompletedProjectIds.has(project.id) ? "收起" : "展開"}</button></div>` : ""}
-          ${state.expandedCompletedProjectIds.has(project.id) ? completed.map(renderCompletedProjectTask).join("") : ""}
-        </div>
-        </section>
       </div>
+      <div class="compact-list">
+        ${pending.map(renderProjectTask).join("") || `<p class="muted empty-detail">目前沒有未完成工作。</p>`}
+        ${completed.length ? `<div class="completed-toggle"><strong>已完成（${completed.length}）</strong><button class="ghost-button" data-toggle-completed="${escapeHTML(project.id)}">${state.expandedCompletedProjectIds.has(project.id) ? "收起" : "展開"}</button></div>` : ""}
+        ${state.expandedCompletedProjectIds.has(project.id) ? completed.map(renderCompletedProjectTask).join("") : ""}
+      </div>
+    </section>
+    <nav class="project-mobile-tabs tabs-${mobileTabs.length}" aria-label="專案內容分頁">
+      ${mobileTabs.map(([value, label]) => `<button class="${state.projectMobileTab === value ? "active" : ""}" data-project-mobile-tab="${value}">${label}</button>`).join("")}
+    </nav>
+    <div class="project-detail-columns ${showBilling ? "" : "single-column"}">
+      ${showBilling ? renderProjectBillingCard(project) : ""}
       <section class="project-work-card project-mobile-panel ${state.projectMobileTab === "checklist" ? "active" : ""}" data-project-mobile-panel="checklist">
         <div class="detail-card-header">
           <div><h3>檢查清單</h3><p class="muted">確認完整度，不進入月曆。</p></div>
@@ -2341,7 +2346,7 @@ function bindContentEvents() {
   document.querySelectorAll("[data-project-open]").forEach((button) => {
     button.addEventListener("click", () => {
       state.selectedProjectId = button.dataset.projectOpen;
-      state.projectMobileTab = "work";
+      state.projectMobileTab = projectById(state.selectedProjectId)?.mode === "live" ? "checklist" : "billing";
       state.replyingToMessageId = "";
       state.page = "projectDetail";
       render();
@@ -3038,7 +3043,7 @@ function saveProjectFromForm(event) {
   }
   addHistory(`${existing ? "更新" : "建立"}課程專案「${course}」`, project.id, "project");
   state.selectedProjectId = project.id;
-  state.projectMobileTab = "work";
+  state.projectMobileTab = project.mode === "live" ? "checklist" : "billing";
   state.page = "projectDetail";
   saveWorkspace();
   closeModal();
@@ -3434,7 +3439,7 @@ function saveProjectBillingSettings(event) {
   project.billing_method = BILLING_METHODS.some((item) => item.value === billingMethod) ? billingMethod : "exact";
   project.last_update = todayISO();
   project.updated_at = new Date().toISOString();
-  if (project.mode === "live" && state.projectMobileTab === "billing") state.projectMobileTab = "work";
+  if (project.mode === "live" && state.projectMobileTab === "billing") state.projectMobileTab = "checklist";
   saveWorkspace(); showToast("時數與鐘點費設定已儲存"); render();
 }
 
@@ -3513,8 +3518,15 @@ function toggleLessonDelivery(recordId, field, done, input = null) {
 
   const delivery = lessonDeliveryState(project, record);
   const row = input?.closest("[data-duration-record]");
+  const deliveryComplete = LESSON_DELIVERY_STEPS.every((step) => delivery[step.field]);
+  const completedSteps = LESSON_DELIVERY_STEPS.filter((step) => delivery[step.field]).length;
   input?.closest(".lesson-delivery-option")?.classList.toggle("checked", Boolean(done));
-  row?.classList.toggle("delivery-complete", LESSON_DELIVERY_STEPS.every((step) => delivery[step.field]));
+  row?.classList.toggle("delivery-complete", deliveryComplete);
+  const rowLabel = row?.querySelector("[data-lesson-delivery-label]");
+  if (rowLabel) {
+    rowLabel.textContent = deliveryComplete ? "交付完成" : `${completedSteps}/4 項完成`;
+    rowLabel.classList.toggle("complete", deliveryComplete);
+  }
   const summary = projectBillingSummary(project);
   const progress = typeof document === "undefined" ? null : document.querySelector("[data-delivery-progress]");
   const completed = typeof document === "undefined" ? null : document.querySelector("[data-delivery-summary]");
