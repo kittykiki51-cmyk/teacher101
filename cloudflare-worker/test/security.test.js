@@ -6,6 +6,7 @@ import {
   base64UrlEncode,
   createSession,
   csrfMatches,
+  PBKDF2_ITERATIONS,
   readSession,
   sessionCookie,
   verifyPassword,
@@ -13,11 +14,12 @@ import {
 
 test("PBKDF2 password verification accepts only the matching password", async () => {
   const salt = randomBytes(16);
-  const iterations = 210000;
+  const iterations = PBKDF2_ITERATIONS;
   const digest = pbkdf2Sync("correct horse", salt, iterations, 32, "sha256");
   const encoded = `pbkdf2_sha256$${iterations}$${base64UrlEncode(salt)}$${base64UrlEncode(digest)}`;
   assert.equal(await verifyPassword("correct horse", encoded), true);
   assert.equal(await verifyPassword("wrong horse", encoded), false);
+  assert.equal(await verifyPassword("correct horse", encoded.replace(`$${iterations}$`, "$310000$")), false);
   assert.equal(await verifyPassword("correct horse", "invalid"), false);
 });
 

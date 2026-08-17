@@ -23,6 +23,8 @@ D1 資料庫：`teacher101`（APAC，ID `6d7fb804-a100-473a-95cc-96dbef71b967`�
 
 所有 secrets 必須透過 `wrangler secret put` 設定，不應寫進 Git。
 
+密碼雜湊固定使用 PBKDF2-SHA256 `100,000` 次，符合 Cloudflare Workers Web Crypto 的執行上限；登入限速仍會限制連續猜測。
+
 ## 資料遷移
 
 `scripts/upload_sqlite_backup.py` 會先執行 SQLite 完整性檢查，再透過暫時開啟且受保護的遷移 API 逐筆匯入。長 JSON 不直接嵌入 SQL，以避開 D1 的 SQL statement 長度限制。`scripts/verify_d1_export.py` 會將 D1 匯出內容與 Railway 來源做 canonical JSON SHA-256 比對。

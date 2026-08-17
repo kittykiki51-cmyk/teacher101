@@ -44,7 +44,8 @@ confirmation = getpass.getpass("請再輸入一次：")
 if not password or password != confirmation:
     raise SystemExit("兩次密碼不一致，未設定任何 Cloudflare secret。")
 
-iterations = 310_000
+# Cloudflare Workers Web Crypto rejects PBKDF2 counts above 100,000.
+iterations = 100_000
 salt = os.urandom(16)
 digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations, dklen=32)
 password_hash = f"pbkdf2_sha256${iterations}${base64url(salt)}${base64url(digest)}"

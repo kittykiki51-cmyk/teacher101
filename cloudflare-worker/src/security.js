@@ -4,6 +4,7 @@ export const SESSION_COOKIE = "__Host-teacher_session";
 export const SESSION_MAX_AGE = 30 * 24 * 60 * 60;
 export const LOGIN_WINDOW_SECONDS = 15 * 60;
 export const LOGIN_ATTEMPT_LIMIT = 8;
+export const PBKDF2_ITERATIONS = 100_000;
 
 export function base64UrlEncode(value) {
   const bytes = value instanceof Uint8Array ? value : new Uint8Array(value);
@@ -39,7 +40,7 @@ async function hmac(secret, value) {
 export async function verifyPassword(password, encodedHash) {
   const [algorithm, iterationsValue, saltValue, hashValue] = String(encodedHash || "").split("$");
   const iterations = Number(iterationsValue);
-  if (algorithm !== "pbkdf2_sha256" || !Number.isInteger(iterations) || iterations < 210000) return false;
+  if (algorithm !== "pbkdf2_sha256" || iterations !== PBKDF2_ITERATIONS) return false;
   let salt;
   let expected;
   try {
@@ -50,11 +51,16 @@ export async function verifyPassword(password, encodedHash) {
   }
   if (salt.length < 16 || expected.length !== 32) return false;
   const sourceKey = await crypto.subtle.importKey("raw", encoder.encode(String(password)), "PBKDF2", false, ["deriveBits"]);
-  const actual = new Uint8Array(await crypto.subtle.deriveBits(
-    { name: "PBKDF2", hash: "SHA-256", salt, iterations },
-    sourceKey,
-    256,
-  ));
+  let actual;
+  try {
+    actual = new Uint8Array(await crypto.subtle.deriveBits(
+      { name: "PBKDF2", hash: "SHA-256", salt, iterations },
+      sourceKey,
+      256,
+    ));
+  } catch {
+    return false;
+  }
   return constantTimeEqual(actual, expected);
 }
 
