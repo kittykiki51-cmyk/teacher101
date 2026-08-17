@@ -208,6 +208,10 @@ assert(workDetail.includes("2 小時 0 分 0 秒") && workDetail.includes("NT$3,
 assert(workDetail.includes('data-duration-add="project-mobile"') && workDetail.includes('data-duration-record="duration-1"'), "The billing panel should allow lessons to be added and individually saved");
 harness.saveProjectBillingSettingsForTest({ mode: "直播", hourly_rate: "1800", billing_method: "half_hour" });
 assert(project.mode === "live" && project.hourly_rate === 1800 && project.billing_method === "half_hour", "Billing settings should save the course type, hourly rate, and billing method");
+const liveProjectDetail = harness.renderProjectDetail();
+assert(!liveProjectDetail.includes('data-project-mobile-panel="billing"') && !liveProjectDetail.includes('data-project-mobile-tab="billing"'), "Live projects should hide both the billing panel and its mobile tab without deleting stored records");
+assert(project.lesson_durations.length === 2, "Hiding live-project billing should preserve existing duration records");
+project.mode = "recorded";
 harness.saveLessonDurationRecordForTest("duration-1", { lesson_number: "1", hours: "1", minutes: "0", seconds: "0", note: "Updated lesson" });
 assert(project.lesson_durations[0].hours === 1 && project.lesson_durations[0].note === "Updated lesson", "An individual lesson duration should save valid hour-minute-second values");
 harness.addLessonDurationRecordForTest(project.id);
@@ -301,15 +305,15 @@ assert(styles.includes(".task-conflict-warning") && styles.includes("border-left
 const index = read("../index.html");
 assert(index.includes("mobile-button-label"), "Mobile top bar should use a compact add label");
 assert(index.includes('href="app-icon.svg"') && index.includes('href="app-icon-192.png"'), "The app should publish browser and home-screen icons");
-assert(index.includes('styles.css?v=35') && index.includes('app.js?v=35'), "The page should request versioned assets after the message and billing update");
+assert(index.includes('styles.css?v=36') && index.includes('app.js?v=36'), "The page should request versioned assets after the live-project billing visibility update");
 
 const manifest = read("../manifest.json");
 assert(manifest.includes("app-icon-192.png") && manifest.includes("app-icon-512.png") && manifest.includes("maskable"), "The PWA manifest should publish installable app icons");
 
 const worker = read("../service-worker.js");
 new Function(worker);
-assert(worker.includes('teacher-operations-v35'), "PWA cache should be refreshed after the message and billing update");
-assert(worker.includes('"/styles.css?v=35"') && worker.includes('"/app.js?v=35"'), "The PWA shell should cache versioned application assets");
+assert(worker.includes('teacher-operations-v36'), "PWA cache should be refreshed after the live-project billing visibility update");
+assert(worker.includes('"/styles.css?v=36"') && worker.includes('"/app.js?v=36"'), "The PWA shell should cache versioned application assets");
 assert(worker.includes("event.respondWith(updateCache.catch"), "Online application assets should load from the network before falling back to cache");
 assert(worker.includes("icon-house.svg") && worker.includes("app-icon-512.png"), "The PWA shell should cache identity and navigation assets");
 assert(worker.includes('LOGIN_PATHS.has(url.pathname)'), "The service worker should leave login documents and assets to the network");
