@@ -755,8 +755,10 @@ body[data-page="projectDetail"] .content {
 
 .home-task-main {
   min-width: 0;
+  max-width: 100%;
   display: grid;
   gap: 2px;
+  overflow: hidden;
 }
 
 .home-task-project-link {
@@ -4990,7 +4992,17 @@ button.day-cell:hover {
 
   .mobile-task-content {
     display: block;
-    width: 100%;
+    width: 0;
+    min-width: 100%;
+    max-width: 100%;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+  }
+
+  .home-task-main > .home-task-project-link {
+    width: 0;
+    min-width: 100%;
+    max-width: 100%;
   }
 
   .task-overflow {
@@ -5104,6 +5116,12 @@ button.day-cell:hover {
   .main {
     padding-right: 8px;
     padding-left: 8px;
+  }
+
+  .goal-card,
+  .home-panel {
+    margin-right: -8px;
+    margin-left: -8px;
   }
 
   .topbar h2 {
