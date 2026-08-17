@@ -604,6 +604,101 @@ function lessonDeliveryFieldsFromChecklistTitle(title) {
   return fields;
 }
 
+function projectTemplateMode(template) {
+  if (["recorded", "live", "any"].includes(template?.mode)) return template.mode;
+  const name = String(template?.name || "");
+  if (/直播|live/i.test(name)) return "live";
+  if (/影音|錄播|recorded/i.test(name)) return "recorded";
+  const hasLessonDelivery = (template?.sections || []).some((section) => (section.items || []).some((item) => (
+    lessonNumberFromChecklistTitle(item.title) && lessonDeliveryFieldsFromChecklistTitle(item.title).length
+  )));
+  return hasLessonDelivery ? "recorded" : "any";
+}
+
+function projectTemplateLessonCount(template) {
+  if (projectTemplateMode(template) !== "recorded") return 0;
+  const configured = Number(template?.lesson_count);
+  if (Number.isInteger(configured) && configured > 0 && configured <= 999) return configured;
+  const inferred = Math.max(0, ...(template?.sections || []).flatMap((section) => (section.items || []).map((item) => (
+    lessonDeliveryFieldsFromChecklistTitle(item.title).length ? lessonNumberFromChecklistTitle(item.title) : 0
+  ))));
+  return inferred || 10;
+}
+
+function projectTemplateDisplayName(template) {
+  const name = String(template?.name || "未命名範本");
+  const displayName = name === "影音-檢查清單" ? "影音專案範本（新版）" : name;
+  const mode = projectTemplateMode(template);
+  if (mode === "recorded") return `${displayName}｜影音 ${projectTemplateLessonCount(template)} 堂`;
+  if (mode === "live") return `${displayName}｜直播`;
+  return `${displayName}｜通用`;
+}
+
+function projectTemplateOperationalSections(template) {
+  return (template?.sections || []).map((section) => ({
+    ...section,
+    items: (section.items || []).filter((item) => !(
+      lessonNumberFromChecklistTitle(item.title) && lessonDeliveryFieldsFromChecklistTitle(item.title).length
+    )),
+  })).filter((section) => section.items.length);
+}
+
+function projectTemplateOptions(mode, selectedId = "") {
+  const requestedMode = mode === "live" ? "live" : "recorded";
+  const templates = (state.workspace.checklist_templates || []).filter((template) => {
+    const templateMode = projectTemplateMode(template);
+    return templateMode === "any" || templateMode === requestedMode;
+  });
+  return `<option value="">不套用</option>${templates.map((template) => `<option value="${escapeHTML(template.id)}" ${template.id === selectedId ? "selected" : ""}>${escapeHTML(projectTemplateDisplayName(template))}</option>`).join("")}`;
+}
+
+function projectTemplateSummary(template) {
+  if (!template) return "可選擇與課程類型相符的範本。";
+  const sections = projectTemplateOperationalSections(template);
+  const itemCount = sections.reduce((sum, section) => sum + section.items.length, 0);
+  const lessonCount = projectTemplateLessonCount(template);
+  return lessonCount
+    ? `建立 ${lessonCount} 堂影片交付卡，另加入 ${sections.length} 份一般清單、共 ${itemCount} 項。`
+    : `加入 ${sections.length} 份一般清單、共 ${itemCount} 項。`;
+}
+
+function newLessonDurationRecord(lessonNumber, timestamp = new Date().toISOString()) {
+  return {
+    id: uid("duration"), lesson_number: lessonNumber, hours: 0, minutes: 0, seconds: 0, note: "",
+    syllabus_ready: false, video_uploaded: false, subtitles_uploaded: false, handout_uploaded: false,
+    created_at: timestamp, updated_at: timestamp,
+  };
+}
+
+function applyProjectTemplate(template, project) {
+  if (!template || !project) return { groups: 0, items: 0, lessons: 0 };
+  const sections = projectTemplateOperationalSections(template);
+  sections.forEach((section) => state.workspace.checklists.push({
+    id: uid("group"), project_id: project.id, name: section.name || "未命名分組",
+    items: (section.items || []).map((item) => ({ id: uid("check"), title: item.title || "未命名項目", done: false, linked_task_id: "" })),
+  }));
+  let addedLessons = 0;
+  if (project.mode !== "live") {
+    project.lesson_durations = Array.isArray(project.lesson_durations) ? project.lesson_durations : [];
+    const existingNumbers = new Set(project.lesson_durations.map((record) => Number(record.lesson_number) || 0));
+    const lessonCount = projectTemplateLessonCount(template);
+    const now = new Date().toISOString();
+    for (let lessonNumber = 1; lessonNumber <= lessonCount; lessonNumber += 1) {
+      if (existingNumbers.has(lessonNumber)) continue;
+      project.lesson_durations.push(newLessonDurationRecord(lessonNumber, now));
+      addedLessons += 1;
+    }
+    if (addedLessons && Array.isArray(project.dismissed_lesson_delivery_numbers)) {
+      project.dismissed_lesson_delivery_numbers = project.dismissed_lesson_delivery_numbers.filter((number) => Number(number) > lessonCount);
+    }
+  }
+  return {
+    groups: sections.length,
+    items: sections.reduce((sum, section) => sum + section.items.length, 0),
+    lessons: addedLessons,
+  };
+}
+
 function legacyLessonDeliveryStateFromGroups(groups, lessonNumber) {
   const stateByField = {};
   groups.forEach((group) => (group.items || []).forEach((item) => {
@@ -2891,7 +2986,7 @@ function openProjectDialog(project = null) {
             <span>目前階段</span>
             <select class="select" name="stage">${STAGE_DEFINITIONS.map((stage) => `<option value="${escapeHTML(stage.value)}" ${normalizedStageValue(project || {}) === stage.value ? "selected" : ""}>${escapeHTML(stage.label)}</option>`).join("")}</select>
           </label>
-          ${project ? "" : `<label><span>建立時套用檢查清單</span><select class="select" name="template"><option value="">不套用</option>${(state.workspace.checklist_templates || []).map((item) => `<option value="${escapeHTML(item.id)}">${escapeHTML(item.name || "未命名範本")}</option>`).join("")}</select></label>`}
+          ${project ? "" : `<label><span>建立時套用專案範本</span><select class="select" name="template" data-project-template>${projectTemplateOptions("recorded")}</select><small class="muted" data-project-template-summary>${projectTemplateSummary(null)}</small></label>`}
         </section>
         <section class="project-form-section" data-project-form-section="links">
           <label><span>雲端資料夾</span><input class="search-input" type="url" inputmode="url" name="cloud" value="${escapeHTML(project?.links?.["雲端資料夾"] || "")}" placeholder="https://..." autocomplete="off"></label>
@@ -2912,7 +3007,20 @@ function openProjectDialog(project = null) {
   layer.addEventListener("click", (event) => {
     if (event.target === layer) closeModal();
   }, { once: true });
-  $("#projectForm").addEventListener("submit", saveProjectFromForm);
+  const projectForm = $("#projectForm");
+  projectForm.addEventListener("submit", saveProjectFromForm);
+  const templateSelect = projectForm.querySelector("[data-project-template]");
+  const templateSummary = projectForm.querySelector("[data-project-template-summary]");
+  const updateTemplateField = () => {
+    if (!templateSelect) return;
+    const previousId = templateSelect.value;
+    const mode = projectForm.elements.mode?.value === "直播" ? "live" : "recorded";
+    templateSelect.innerHTML = projectTemplateOptions(mode, previousId);
+    const selectedTemplate = (state.workspace.checklist_templates || []).find((item) => item.id === templateSelect.value);
+    if (templateSummary) templateSummary.textContent = projectTemplateSummary(selectedTemplate);
+  };
+  projectForm.elements.mode?.addEventListener("change", updateTemplateField);
+  templateSelect?.addEventListener("change", updateTemplateField);
   layer.querySelectorAll("[data-project-form-tab]").forEach((button) => button.addEventListener("click", () => {
     activateProjectFormSection(layer, button.dataset.projectFormTab);
   }));
@@ -3035,11 +3143,8 @@ function saveProjectFromForm(event) {
   if (!existing) state.workspace.projects.push(project);
   const template = (state.workspace.checklist_templates || []).find((item) => item.id === form.get("template"));
   if (!existing && template) {
-    (template.sections || []).forEach((section) => state.workspace.checklists.push({
-      id: uid("group"), project_id: project.id, name: section.name || "未命名分組",
-      items: (section.items || []).map((item) => ({ id: uid("check"), title: item.title || "未命名項目", done: false, linked_task_id: "" })),
-    }));
-    addHistory(`建立專案時套用檢查範本「${template.name || ""}」`, project.id, "template");
+    const applied = applyProjectTemplate(template, project);
+    addHistory(`建立專案時套用「${template.name || ""}」：${applied.lessons ? `建立 ${applied.lessons} 堂影片，` : ""}加入 ${applied.groups} 份清單、${applied.items} 個項目`, project.id, "template");
   }
   addHistory(`${existing ? "更新" : "建立"}課程專案「${course}」`, project.id, "project");
   state.selectedProjectId = project.id;
@@ -3403,23 +3508,34 @@ function scheduleChecklistItem(groupId, itemId) {
 }
 
 function importChecklistTemplate() {
-  const templates = state.workspace.checklist_templates || [];
+  const project = projectById(state.selectedProjectId);
+  const templates = (state.workspace.checklist_templates || []).filter((template) => {
+    const templateMode = projectTemplateMode(template);
+    return templateMode === "any" || templateMode === project?.mode;
+  });
   if (!templates.length) { showToast("目前沒有可匯入的檢查清單範本"); return; }
-  const name = prompt(`輸入範本名稱：\n${templates.map((item) => item.name).join("、")}`);
-  const template = templates.find((item) => item.name === name);
+  const name = prompt(`輸入範本名稱：\n${templates.map(projectTemplateDisplayName).join("\n")}`);
+  const template = templates.find((item) => item.name === name || projectTemplateDisplayName(item) === name);
   if (!template) return;
-  (template.sections || []).forEach((section) => state.workspace.checklists.push({ id: uid("group"), project_id: state.selectedProjectId, name: section.name || "未命名分組", items: (section.items || []).map((item) => ({ id: uid("check"), title: item.title || "未命名項目", done: false, linked_task_id: "" })) }));
-  saveWorkspace(); showToast("已匯入檢查清單範本"); render();
+  const applied = applyProjectTemplate(template, project);
+  addHistory(`匯入「${template.name || ""}」：${applied.lessons ? `新增 ${applied.lessons} 堂影片，` : ""}加入 ${applied.groups} 份清單、${applied.items} 個項目`, project.id, "template");
+  saveWorkspace(); showToast(applied.lessons ? `已匯入新版影音範本並新增 ${applied.lessons} 堂` : "已匯入專案範本"); render();
 }
 
 function saveChecklistTemplate() {
-  const groups = checklistGroups(state.selectedProjectId);
-  if (!groups.length) { showToast("目前沒有清單可儲存"); return; }
+  const project = projectById(state.selectedProjectId);
+  const groups = projectOperationalChecklistGroups(project);
+  const lessonCount = project?.mode === "live" ? 0 : projectLessonDurations(project).length;
+  if (!groups.length && !lessonCount) { showToast("目前沒有內容可儲存為範本"); return; }
   const name = prompt("範本名稱");
   if (!name) return;
   state.workspace.checklist_templates ||= [];
-  state.workspace.checklist_templates.push({ id: uid("template"), name: name.trim(), sections: groups.map((group) => ({ name: group.name, items: (group.items || []).map((item) => ({ title: item.title })) })) });
-  saveWorkspace(); showToast("已儲存為範本");
+  state.workspace.checklist_templates.push({
+    id: uid("template"), name: name.trim(), mode: project?.mode === "live" ? "live" : "recorded", lesson_count: lessonCount,
+    sections: groups.map((group) => ({ name: group.name, items: (group.items || []).map((item) => ({ title: item.title })) })),
+    source_project_id: project?.id || "", updated_at: new Date().toISOString(),
+  });
+  saveWorkspace(); showToast(lessonCount ? `已儲存影音範本（${lessonCount} 堂）` : "已儲存直播範本");
 }
 
 function saveProjectBillingSettings(event) {
@@ -3449,11 +3565,7 @@ function addLessonDurationRecord(projectId) {
   project.lesson_durations = Array.isArray(project.lesson_durations) ? project.lesson_durations : [];
   const nextLessonNumber = project.lesson_durations.reduce((maximum, record) => Math.max(maximum, Number(record.lesson_number) || 0), 0) + 1;
   const now = new Date().toISOString();
-  const record = {
-    id: uid("duration"), lesson_number: nextLessonNumber, hours: 0, minutes: 0, seconds: 0, note: "",
-    syllabus_ready: false, video_uploaded: false, subtitles_uploaded: false, handout_uploaded: false,
-    created_at: now, updated_at: now,
-  };
+  const record = newLessonDurationRecord(nextLessonNumber, now);
   project.lesson_durations.push(record);
   project.updated_at = now;
   saveWorkspace(); render();

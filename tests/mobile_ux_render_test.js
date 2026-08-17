@@ -32,6 +32,8 @@ return {
   normalizedStageValue, projectStageDisplay, STAGE_DEFINITIONS, PROJECT_MESSAGE_TYPES, projectMessageType,
   BILLING_METHODS, lessonDurationSeconds, formatLongDuration, billableHours, projectBillingSummary,
   LESSON_DELIVERY_STEPS, lessonDeliveryState, lessonDeliverySummary, projectOperationalChecklistGroups,
+  projectTemplateMode, projectTemplateLessonCount, projectTemplateDisplayName, projectTemplateOperationalSections,
+  projectTemplateOptions, applyProjectTemplate,
   projectCompletionSummary, archiveYearSelection, notificationSettingsState, validEmailAddress,
   monthlyGoalProjects, taskDurationMinutes, taskTimeLabel, taskInterval, taskTimeConflicts,
   completeProjectForTest: (id) => runProjectActionForTest(completeProject, id),
@@ -108,8 +110,32 @@ harness.state.workspace = {
     { id: "check-mobile", title: "Final review", done: false },
   ] }],
   progress_logs: [], project_messages: [teacherMessage, replyMessage, importantMessage], history: [], archives: [], deleted_ids: {},
+  checklist_templates: [],
 };
 harness.state.selectedProjectId = project.id;
+
+const currentVideoTemplate = {
+  id: "video-template-current",
+  name: "影音-檢查清單",
+  sections: [
+    { name: "家儀剪輯進度", items: Array.from({ length: 10 }, (_, index) => ({ title: `第${index + 1}堂＋字幕+課綱單元建置` })) },
+    { name: "講師繳交資料", items: [{ title: "身分證" }, { title: "課程規劃書" }] },
+  ],
+};
+const liveTemplate = { id: "live-template", name: "直播範本", sections: [{ name: "課前", items: [{ title: "課前問卷" }] }] };
+harness.state.workspace.checklist_templates = [currentVideoTemplate, liveTemplate];
+assert(harness.projectTemplateMode(currentVideoTemplate) === "recorded" && harness.projectTemplateLessonCount(currentVideoTemplate) === 10, "The current video template should upgrade to a ten-lesson recorded-course template");
+assert(harness.projectTemplateDisplayName(currentVideoTemplate).includes("影音專案範本（新版）") && harness.projectTemplateDisplayName(currentVideoTemplate).includes("10 堂"), "The upgraded video template should have a clear current-version label");
+assert(harness.projectTemplateOperationalSections(currentVideoTemplate).length === 1 && harness.projectTemplateOperationalSections(currentVideoTemplate)[0].items.length === 2, "Legacy per-lesson checklist rows should not be duplicated in the operational checklist");
+assert(harness.projectTemplateOptions("recorded").includes("video-template-current") && !harness.projectTemplateOptions("recorded").includes("live-template"), "Project forms should only show templates matching the selected course type");
+const templateProject = { id: "project-from-video-template", mode: "recorded", lesson_durations: [] };
+harness.state.workspace.projects.push(templateProject);
+const appliedTemplate = harness.applyProjectTemplate(currentVideoTemplate, templateProject);
+assert(appliedTemplate.lessons === 10 && templateProject.lesson_durations.length === 10, "Applying the upgraded video template should create ten lesson delivery cards");
+assert(appliedTemplate.groups === 1 && appliedTemplate.items === 2, "Applying the upgraded video template should retain only general operational checklist items");
+assert(templateProject.lesson_durations.every((record) => harness.LESSON_DELIVERY_STEPS.every((step) => record[step.field] === false)), "Template-created lessons should start with all four delivery steps unchecked");
+harness.state.workspace.projects = harness.state.workspace.projects.filter((item) => item.id !== templateProject.id);
+harness.state.workspace.checklists = harness.state.workspace.checklists.filter((group) => group.project_id !== templateProject.id);
 
 const migratedWorkspace = harness.normalizeWorkspace({
   settings: { monthly_goal: 2 },
@@ -300,6 +326,7 @@ assert(source.includes('name="teacher" required') && source.includes('autocomple
 assert(source.includes('name="teacher_email"') && !source.includes('name="course_link"'), "Project forms should collect teacher email instead of a course page URL");
 assert(harness.validEmailAddress("teacher@gmail.com") === "teacher@gmail.com" && harness.validEmailAddress("not-an-email") === "", "Teacher email should be validated before saving or opening mail");
 assert(source.includes("project-form-tabs"), "Project forms should provide mobile sections");
+assert(source.includes("建立時套用專案範本") && source.includes("data-project-template-summary"), "New projects should explain the selected course template before saving");
 assert(source.includes('data-project-form-section="basic"') && source.includes('data-project-form-section="schedule"') && source.includes('data-project-form-section="links"'), "All project form sections should be available");
 assert(source.includes("nav-icon-${item.icon}"), "Desktop and mobile navigation should render consistent line icons");
 
@@ -348,15 +375,15 @@ assert(styles.includes(".task-conflict-warning") && styles.includes("border-left
 const index = read("../index.html");
 assert(index.includes("mobile-button-label"), "Mobile top bar should use a compact add label");
 assert(index.includes('href="app-icon.svg"') && index.includes('href="app-icon-192.png"'), "The app should publish browser and home-screen icons");
-assert(index.includes('styles.css?v=39') && index.includes('app.js?v=39'), "The page should request versioned assets after the project-detail layout update");
+assert(index.includes('styles.css?v=40') && index.includes('app.js?v=40'), "The page should request versioned assets after the video-template update");
 
 const manifest = read("../manifest.json");
 assert(manifest.includes("app-icon-192.png") && manifest.includes("app-icon-512.png") && manifest.includes("maskable"), "The PWA manifest should publish installable app icons");
 
 const worker = read("../service-worker.js");
 new Function(worker);
-assert(worker.includes('teacher-operations-v39'), "PWA cache should be refreshed after the project-detail layout update");
-assert(worker.includes('"/styles.css?v=39"') && worker.includes('"/app.js?v=39"'), "The PWA shell should cache versioned application assets");
+assert(worker.includes('teacher-operations-v40'), "PWA cache should be refreshed after the video-template update");
+assert(worker.includes('"/styles.css?v=40"') && worker.includes('"/app.js?v=40"'), "The PWA shell should cache versioned application assets");
 assert(worker.includes("event.respondWith(updateCache.catch"), "Online application assets should load from the network before falling back to cache");
 assert(worker.includes("icon-house.svg") && worker.includes("app-icon-512.png"), "The PWA shell should cache identity and navigation assets");
 assert(worker.includes('LOGIN_PATHS.has(url.pathname)'), "The service worker should leave login documents and assets to the network");
