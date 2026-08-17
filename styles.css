@@ -1914,19 +1914,35 @@ button:disabled {
   min-height: 36px;
 }
 
+.billing-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.delivery-progress {
+  padding: 5px 8px;
+  border: 1px solid #cbd3fb;
+  border-radius: 999px;
+  background: var(--primary-soft);
+  color: var(--primary-dark);
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
 .lesson-duration-table {
-  overflow-x: auto;
+  overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 6px;
 }
 
 .lesson-duration-head,
-.lesson-duration-row {
+.lesson-duration-fields {
   display: grid;
   grid-template-columns: 58px 54px 54px 54px minmax(150px, 1fr) auto;
   align-items: center;
   gap: 6px;
-  min-width: 520px;
 }
 
 .lesson-duration-head {
@@ -1939,19 +1955,20 @@ button:disabled {
 }
 
 .lesson-duration-row {
-  padding: 7px 9px;
+  padding: 8px 9px 9px;
   border-bottom: 1px solid var(--border);
+  background: var(--surface);
 }
 
 .lesson-duration-row:last-child {
   border-bottom: 0;
 }
 
-.lesson-duration-row label > span {
+.lesson-duration-fields label > span {
   display: none;
 }
 
-.lesson-duration-row .input {
+.lesson-duration-fields .input {
   width: 100%;
   min-height: 34px;
   padding: 0 7px;
@@ -1967,6 +1984,62 @@ button:disabled {
   min-height: 32px;
   padding: 0 8px;
   font-size: 12px;
+}
+
+.lesson-delivery-checks {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin: 8px 0 0;
+  padding: 8px 0 0;
+  border: 0;
+  border-top: 1px dashed var(--border);
+}
+
+.lesson-delivery-checks legend {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+.lesson-delivery-option {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  min-height: 34px;
+  gap: 6px;
+  padding: 5px 7px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface-alt);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.lesson-delivery-option input {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary);
+}
+
+.lesson-delivery-option span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.lesson-delivery-option.checked {
+  border-color: #b9d2c2;
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.lesson-duration-row.delivery-complete {
+  box-shadow: inset 3px 0 0 var(--green);
 }
 
 .billing-empty {
@@ -2001,6 +2074,12 @@ button:disabled {
 .billing-summary strong {
   overflow-wrap: anywhere;
   font-size: 13px;
+}
+
+.billing-summary em {
+  color: var(--muted);
+  font-size: 10px;
+  font-style: normal;
 }
 
 .billing-summary .billing-total {
@@ -4289,6 +4368,11 @@ button.day-cell:hover {
     flex: 0 0 auto;
   }
 
+  .billing-card-actions {
+    align-items: flex-end;
+    flex-direction: column;
+  }
+
   .billing-settings {
     grid-template-columns: 1fr;
   }
@@ -4303,7 +4387,7 @@ button.day-cell:hover {
   }
 
   .lesson-duration-row {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    display: block;
     min-width: 0;
     margin-bottom: 8px;
     border: 1px solid var(--border);
@@ -4312,12 +4396,17 @@ button.day-cell:hover {
     padding: 8px;
   }
 
-  .lesson-duration-row label > span {
+  .lesson-duration-fields {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    min-width: 0;
+  }
+
+  .lesson-duration-fields label > span {
     display: block;
   }
 
-  .lesson-duration-row label,
-  .lesson-duration-row .input {
+  .lesson-duration-fields label,
+  .lesson-duration-fields .input {
     min-width: 0;
   }
 
@@ -4328,6 +4417,10 @@ button.day-cell:hover {
 
   .lesson-duration-actions button {
     flex: 1;
+  }
+
+  .lesson-delivery-checks {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .billing-summary {

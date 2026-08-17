@@ -18,6 +18,12 @@ const BILLING_METHODS = [
   { value: "half_hour", label: "總時數進位至半小時" },
   { value: "hour", label: "總時數進位至一小時" },
 ];
+const LESSON_DELIVERY_STEPS = [
+  { field: "syllabus_ready", label: "系統課綱建置" },
+  { field: "video_uploaded", label: "影片壓縮後上傳" },
+  { field: "subtitles_uploaded", label: "字幕上傳" },
+  { field: "handout_uploaded", label: "講義上傳" },
+];
 const LEGACY_CALENDAR_EVENT_TYPE_MAP = {
   "要約面試": "邀約面試",
   "公告": "公告活動日",
@@ -262,7 +268,7 @@ function uid(prefix = "id") {
 
 function normalizeWorkspace(value) {
   const data = value && typeof value === "object" ? value : emptyWorkspace();
-  return {
+  const normalized = {
     ...emptyWorkspace(),
     ...data,
     settings: { ...emptyWorkspace().settings, ...(data.settings || {}) },
@@ -276,6 +282,8 @@ function normalizeWorkspace(value) {
     archives: Array.isArray(data.archives) ? data.archives : [],
     deleted_ids: data.deleted_ids && typeof data.deleted_ids === "object" ? data.deleted_ids : {},
   };
+  normalized.projects = normalizeProjectLessonDeliveries(normalized.projects, normalized.checklists);
+  return normalized;
 }
 
 function cloneWorkspace(value) {
@@ -568,6 +576,116 @@ function projectLessonDurations(project) {
   return project.lesson_durations.slice().sort((a, b) => (Number(a.lesson_number) || 0) - (Number(b.lesson_number) || 0));
 }
 
+function lessonNumberFromChecklistTitle(title) {
+  const match = String(title || "").match(/第\s*(\d+|[零〇一二兩三四五六七八九十百]+)\s*堂/);
+  if (!match) return 0;
+  if (/^\d+$/.test(match[1])) return Number(match[1]);
+  const digits = { "零": 0, "〇": 0, "一": 1, "二": 2, "兩": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9 };
+  const units = { "十": 10, "百": 100 };
+  let total = 0;
+  let current = 0;
+  for (const character of match[1]) {
+    if (character in digits) current = digits[character];
+    if (character in units) {
+      total += (current || 1) * units[character];
+      current = 0;
+    }
+  }
+  return total + current;
+}
+
+function lessonDeliveryFieldsFromChecklistTitle(title) {
+  const value = String(title || "");
+  const fields = [];
+  if (/課綱/.test(value)) fields.push("syllabus_ready");
+  if (/影片.*上傳|壓縮.*上傳|影片壓縮/.test(value)) fields.push("video_uploaded");
+  if (/字幕/.test(value)) fields.push("subtitles_uploaded");
+  if (/講義/.test(value)) fields.push("handout_uploaded");
+  return fields;
+}
+
+function legacyLessonDeliveryStateFromGroups(groups, lessonNumber) {
+  const stateByField = {};
+  groups.forEach((group) => (group.items || []).forEach((item) => {
+    if (lessonNumberFromChecklistTitle(item.title) !== Number(lessonNumber)) return;
+    lessonDeliveryFieldsFromChecklistTitle(item.title).forEach((field) => {
+      stateByField[field] = Boolean(stateByField[field] || item.done);
+    });
+  }));
+  return stateByField;
+}
+
+function normalizeProjectLessonDeliveries(projects, checklists) {
+  return projects.map((project) => {
+    if (project?.mode === "live") return project;
+    const groups = checklists.filter((group) => group.project_id === project.id);
+    const dismissedNumbers = new Set((Array.isArray(project.dismissed_lesson_delivery_numbers) ? project.dismissed_lesson_delivery_numbers : []).map(Number));
+    const legacyNumbers = new Set(groups.flatMap((group) => (group.items || []).map((item) => (
+      lessonDeliveryFieldsFromChecklistTitle(item.title).length ? lessonNumberFromChecklistTitle(item.title) : 0
+    ))).filter((lessonNumber) => lessonNumber && !dismissedNumbers.has(lessonNumber)));
+    const sourceRecords = Array.isArray(project.lesson_durations) ? project.lesson_durations : [];
+    if (!sourceRecords.length && !legacyNumbers.size) return project;
+    const records = sourceRecords.map((record) => {
+      const legacy = legacyLessonDeliveryStateFromGroups(groups, record.lesson_number);
+      return {
+        ...record,
+        ...Object.fromEntries(LESSON_DELIVERY_STEPS.map(({ field }) => [field, typeof record[field] === "boolean" ? record[field] : Boolean(legacy[field])])),
+      };
+    });
+    const existingNumbers = new Set(records.map((record) => Number(record.lesson_number) || 0));
+    [...legacyNumbers].sort((left, right) => left - right).forEach((lessonNumber) => {
+      if (existingNumbers.has(lessonNumber)) return;
+      const legacy = legacyLessonDeliveryStateFromGroups(groups, lessonNumber);
+      const timestamp = project.updated_at || project.created_at || "";
+      records.push({
+        id: `duration_legacy_${project.id}_${lessonNumber}`,
+        lesson_number: lessonNumber,
+        hours: 0,
+        minutes: 0,
+        seconds: 0,
+        note: "",
+        ...Object.fromEntries(LESSON_DELIVERY_STEPS.map(({ field }) => [field, Boolean(legacy[field])])),
+        created_at: timestamp,
+        updated_at: timestamp,
+      });
+    });
+    return { ...project, lesson_durations: records };
+  });
+}
+
+function legacyLessonDeliveryState(projectId, lessonNumber) {
+  return legacyLessonDeliveryStateFromGroups(checklistGroups(projectId), lessonNumber);
+}
+
+function lessonDeliveryState(project, record) {
+  const legacy = legacyLessonDeliveryState(project?.id, record?.lesson_number);
+  return Object.fromEntries(LESSON_DELIVERY_STEPS.map(({ field }) => [
+    field,
+    typeof record?.[field] === "boolean" ? record[field] : Boolean(legacy[field]),
+  ]));
+}
+
+function lessonDeliverySummary(project, records = projectLessonDurations(project)) {
+  const states = records.map((record) => lessonDeliveryState(project, record));
+  const totalSteps = states.length * LESSON_DELIVERY_STEPS.length;
+  const completedSteps = states.reduce((sum, delivery) => sum + LESSON_DELIVERY_STEPS.filter(({ field }) => delivery[field]).length, 0);
+  const completedLessons = states.filter((delivery) => LESSON_DELIVERY_STEPS.every(({ field }) => delivery[field])).length;
+  return { totalSteps, completedSteps, completedLessons };
+}
+
+function projectOperationalChecklistGroups(project) {
+  const lessonNumbers = new Set(projectLessonDurations(project).map((record) => Number(record.lesson_number) || 0));
+  if (project?.mode === "live" || !lessonNumbers.size) return checklistGroups(project?.id);
+  return checklistGroups(project?.id).map((group) => ({
+    ...group,
+    items: (group.items || []).filter((item) => {
+      const lessonNumber = lessonNumberFromChecklistTitle(item.title);
+      const deliveryFields = lessonDeliveryFieldsFromChecklistTitle(item.title);
+      return !lessonNumbers.has(lessonNumber) || !deliveryFields.length;
+    }),
+  })).filter((group) => group.items.length);
+}
+
 function lessonDurationSeconds(record) {
   const hours = Math.max(0, Number(record?.hours) || 0);
   const minutes = Math.max(0, Math.min(59, Number(record?.minutes) || 0));
@@ -597,6 +715,7 @@ function projectBillingSummary(project) {
   const method = BILLING_METHODS.some((item) => item.value === project?.billing_method) ? project.billing_method : "exact";
   const hourlyRate = Math.max(0, Number(project?.hourly_rate) || 0);
   const chargedHours = billableHours(totalSeconds, method);
+  const delivery = lessonDeliverySummary(project, records);
   return {
     records,
     totalSeconds,
@@ -605,6 +724,7 @@ function projectBillingSummary(project) {
     hourlyRate,
     estimatedFee: Math.round(chargedHours * hourlyRate),
     method,
+    delivery,
   };
 }
 
@@ -1477,14 +1597,21 @@ function renderProjectMessageThread(message, projectId) {
   return `<div class="message-thread">${renderProjectMessage(message)}${replies.length ? `<div class="message-thread-replies">${replies.map((reply) => renderProjectMessage(reply, true)).join("")}</div>` : ""}</div>`;
 }
 
-function renderLessonDurationRow(record) {
-  return `<form class="lesson-duration-row" data-duration-record="${escapeHTML(record.id)}">
-    <label><span>堂數</span><input class="input" type="number" name="lesson_number" min="1" max="999" step="1" inputmode="numeric" value="${Math.max(1, Number(record.lesson_number) || 1)}" required></label>
-    <label><span>時</span><input class="input" type="number" name="hours" min="0" max="99" step="1" inputmode="numeric" value="${Math.max(0, Number(record.hours) || 0)}" required></label>
-    <label><span>分</span><input class="input" type="number" name="minutes" min="0" max="59" step="1" inputmode="numeric" value="${Math.max(0, Math.min(59, Number(record.minutes) || 0))}" required></label>
-    <label><span>秒</span><input class="input" type="number" name="seconds" min="0" max="59" step="1" inputmode="numeric" value="${Math.max(0, Math.min(59, Number(record.seconds) || 0))}" required></label>
-    <label class="lesson-duration-note"><span>備註／檔案名稱</span><input class="input" name="note" maxlength="120" value="${escapeHTML(record.note || "")}" placeholder="例如：第一堂剪輯完成"></label>
-    <div class="lesson-duration-actions"><button class="primary-button" type="submit">儲存</button><button class="danger-button" type="button" data-duration-delete="${escapeHTML(record.id)}">刪除</button></div>
+function renderLessonDurationRow(record, project) {
+  const delivery = lessonDeliveryState(project, record);
+  const deliveryComplete = LESSON_DELIVERY_STEPS.every(({ field }) => delivery[field]);
+  return `<form class="lesson-duration-row ${deliveryComplete ? "delivery-complete" : ""}" data-duration-record="${escapeHTML(record.id)}">
+    <div class="lesson-duration-fields">
+      <label><span>堂數</span><input class="input" type="number" name="lesson_number" min="1" max="999" step="1" inputmode="numeric" value="${Math.max(1, Number(record.lesson_number) || 1)}" required></label>
+      <label><span>時</span><input class="input" type="number" name="hours" min="0" max="99" step="1" inputmode="numeric" value="${Math.max(0, Number(record.hours) || 0)}" required></label>
+      <label><span>分</span><input class="input" type="number" name="minutes" min="0" max="59" step="1" inputmode="numeric" value="${Math.max(0, Math.min(59, Number(record.minutes) || 0))}" required></label>
+      <label><span>秒</span><input class="input" type="number" name="seconds" min="0" max="59" step="1" inputmode="numeric" value="${Math.max(0, Math.min(59, Number(record.seconds) || 0))}" required></label>
+      <label class="lesson-duration-note"><span>備註／檔案名稱</span><input class="input" name="note" maxlength="120" value="${escapeHTML(record.note || "")}" placeholder="例如：第一堂剪輯完成"></label>
+      <div class="lesson-duration-actions"><button class="primary-button" type="submit">儲存</button><button class="danger-button" type="button" data-duration-delete="${escapeHTML(record.id)}">刪除</button></div>
+    </div>
+    <fieldset class="lesson-delivery-checks"><legend>第 ${Math.max(1, Number(record.lesson_number) || 1)} 堂交付進度</legend>
+      ${LESSON_DELIVERY_STEPS.map(({ field, label }) => `<label class="lesson-delivery-option ${delivery[field] ? "checked" : ""}"><input type="checkbox" data-duration-delivery="${escapeHTML(record.id)}" data-duration-field="${field}" ${delivery[field] ? "checked" : ""}><span>${label}</span></label>`).join("")}
+    </fieldset>
   </form>`;
 }
 
@@ -1493,8 +1620,8 @@ function renderProjectBillingCard(project) {
   const mode = project.mode === "live" ? "直播" : "影音";
   return `<section class="project-work-card project-billing-card project-mobile-panel ${state.projectMobileTab === "billing" ? "active" : ""}" data-project-mobile-panel="billing">
     <div class="detail-card-header billing-card-header">
-      <div><h3>影片時數與鐘點費</h3><p class="muted">依剪輯後檔案時長試算，實際核薪仍以最終約定為準。</p></div>
-      <button class="primary-button" data-duration-add="${escapeHTML(project.id)}">新增堂數</button>
+      <div><h3>影片時數與交付進度</h3><p class="muted">每堂統一記錄時長、鐘點費與影音交付項目。</p></div>
+      <div class="billing-card-actions"><span class="delivery-progress" data-delivery-progress>交付 ${summary.delivery.completedSteps}/${summary.delivery.totalSteps}</span><button class="primary-button" data-duration-add="${escapeHTML(project.id)}">新增堂數</button></div>
     </div>
     <form class="billing-settings" id="billingSettingsForm">
       <label><span>課程類型</span><select class="select" name="mode"><option ${mode === "影音" ? "selected" : ""}>影音</option><option ${mode === "直播" ? "selected" : ""}>直播</option></select></label>
@@ -1502,12 +1629,12 @@ function renderProjectBillingCard(project) {
       <label><span>計費方式</span><select class="select" name="billing_method">${BILLING_METHODS.map((item) => `<option value="${item.value}" ${item.value === summary.method ? "selected" : ""}>${item.label}</option>`).join("")}</select></label>
       <button class="ghost-button" type="submit">儲存設定</button>
     </form>
-    <div class="lesson-duration-table" role="table" aria-label="影片堂數時長">
+    <div class="lesson-duration-table" role="table" aria-label="影片堂數時長與交付進度">
       <div class="lesson-duration-head" role="row"><span>堂數</span><span>時</span><span>分</span><span>秒</span><span>備註／檔案名稱</span><span>操作</span></div>
-      <div class="lesson-duration-body">${summary.records.map(renderLessonDurationRow).join("") || `<p class="muted billing-empty">尚未記錄影片時長，請新增第一堂。</p>`}</div>
+      <div class="lesson-duration-body">${summary.records.map((record) => renderLessonDurationRow(record, project)).join("") || `<p class="muted billing-empty">尚未記錄影片時長，請新增第一堂。</p>`}</div>
     </div>
     <div class="billing-summary" aria-label="鐘點費試算結果">
-      <span><small>總堂數</small><strong>${summary.records.length} 堂</strong></span>
+      <span><small>總堂數</small><strong>${summary.records.length} 堂</strong><em data-delivery-summary>${summary.delivery.completedLessons} 堂全數完成</em></span>
       <span><small>總時數</small><strong>${formatLongDuration(summary.totalSeconds)}</strong></span>
       <span><small>計費時數</small><strong>${summary.chargedHours.toFixed(3)} 小時</strong></span>
       <span class="billing-total"><small>預估鐘點費</small><strong>${formatTWD(summary.estimatedFee)}</strong></span>
@@ -1530,7 +1657,7 @@ function renderProjectDetail() {
   const cooperation = project.cooperation_status || "順利";
   const pending = tasksForProject(project.id).filter((task) => task.status !== STATUS_COMPLETED).sort(sortTasks);
   const completed = tasksForProject(project.id).filter((task) => task.status === STATUS_COMPLETED).sort(sortTasks);
-  const groups = checklistGroups(project.id);
+  const groups = projectOperationalChecklistGroups(project);
   const messageRoots = projectMessageRoots(project.id);
   const importantMessages = messageRoots.filter((message) => projectMessageType(message) === "重要訊息");
   const regularMessages = messageRoots.filter((message) => projectMessageType(message) !== "重要訊息");
@@ -2282,6 +2409,7 @@ function bindContentEvents() {
   document.querySelectorAll("[data-duration-record]").forEach((form) => form.addEventListener("submit", saveLessonDurationRecord));
   document.querySelectorAll("[data-duration-add]").forEach((button) => button.addEventListener("click", () => addLessonDurationRecord(button.dataset.durationAdd)));
   document.querySelectorAll("[data-duration-delete]").forEach((button) => button.addEventListener("click", () => deleteLessonDurationRecord(button.dataset.durationDelete)));
+  document.querySelectorAll("[data-duration-delivery]").forEach((input) => input.addEventListener("change", () => toggleLessonDelivery(input.dataset.durationDelivery, input.dataset.durationField, input.checked, input)));
   const goalSettingsForm = $("#goalSettingsForm");
   if (goalSettingsForm) goalSettingsForm.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -2923,13 +3051,19 @@ function addHistory(text, projectId, type = "activity") {
 }
 
 function projectCompletionSummary(projectId) {
+  const project = projectById(projectId);
   const pendingTasks = tasksForProject(projectId).filter((task) => task.status !== STATUS_COMPLETED);
   const phoneTasks = pendingTasks.filter((task) => task.task_type === TASK_TYPE_PHONE);
   const workTasks = pendingTasks.filter((task) => task.task_type !== TASK_TYPE_PHONE);
-  const checklistItems = state.workspace.checklists
-    .filter((group) => group.project_id === projectId)
+  const checklistItems = projectOperationalChecklistGroups(project)
     .flatMap((group) => (group.items || []).filter((item) => !item.done).map((item) => ({ ...item, group_name: group.name || "檢查清單" })));
-  return { workTasks, phoneTasks, checklistItems, total: workTasks.length + phoneTasks.length + checklistItems.length };
+  const deliveryItems = project?.mode === "live" ? [] : projectLessonDurations(project).flatMap((record) => {
+    const delivery = lessonDeliveryState(project, record);
+    return LESSON_DELIVERY_STEPS.filter(({ field }) => !delivery[field]).map(({ label }) => ({
+      title: `第 ${record.lesson_number || "?"} 堂 ${label}`,
+    }));
+  });
+  return { workTasks, phoneTasks, checklistItems, deliveryItems, total: workTasks.length + phoneTasks.length + checklistItems.length + deliveryItems.length };
 }
 
 function completionIssueLine(label, items) {
@@ -2945,6 +3079,7 @@ function completeProject(projectId) {
   const issueLines = [
     completionIssueLine("未完成工作", summary.workTasks),
     completionIssueLine("待聯繫電話", summary.phoneTasks),
+    completionIssueLine("未完成影音交付", summary.deliveryItems),
     completionIssueLine("未完成檢查清單", summary.checklistItems),
   ].filter(Boolean).join("\n");
   const message = summary.total
@@ -3309,7 +3444,11 @@ function addLessonDurationRecord(projectId) {
   project.lesson_durations = Array.isArray(project.lesson_durations) ? project.lesson_durations : [];
   const nextLessonNumber = project.lesson_durations.reduce((maximum, record) => Math.max(maximum, Number(record.lesson_number) || 0), 0) + 1;
   const now = new Date().toISOString();
-  const record = { id: uid("duration"), lesson_number: nextLessonNumber, hours: 0, minutes: 0, seconds: 0, note: "", created_at: now, updated_at: now };
+  const record = {
+    id: uid("duration"), lesson_number: nextLessonNumber, hours: 0, minutes: 0, seconds: 0, note: "",
+    syllabus_ready: false, video_uploaded: false, subtitles_uploaded: false, handout_uploaded: false,
+    created_at: now, updated_at: now,
+  };
   project.lesson_durations.push(record);
   project.updated_at = now;
   saveWorkspace(); render();
@@ -3340,6 +3479,11 @@ function saveLessonDurationRecord(event) {
     showToast(`第 ${lessonNumber} 堂已經存在`);
     return;
   }
+  const previousLessonNumber = Number(record.lesson_number) || 0;
+  const dismissedNumbers = new Set((Array.isArray(project.dismissed_lesson_delivery_numbers) ? project.dismissed_lesson_delivery_numbers : []).map(Number));
+  dismissedNumbers.delete(lessonNumber);
+  if (previousLessonNumber && previousLessonNumber !== lessonNumber) dismissedNumbers.add(previousLessonNumber);
+  project.dismissed_lesson_delivery_numbers = [...dismissedNumbers].sort((left, right) => left - right);
   Object.assign(record, { lesson_number: lessonNumber, hours, minutes, seconds, note: String(form.get("note") || "").trim(), updated_at: new Date().toISOString() });
   project.updated_at = record.updated_at;
   saveWorkspace(); showToast(`第 ${lessonNumber} 堂時長已儲存`); render();
@@ -3349,9 +3493,33 @@ function deleteLessonDurationRecord(recordId) {
   const project = projectById(state.selectedProjectId);
   const record = project?.lesson_durations?.find((item) => item.id === recordId);
   if (!project || !record || !confirm(`確定刪除第 ${record.lesson_number || "?"} 堂的時長紀錄？`)) return;
+  const dismissedNumbers = new Set((Array.isArray(project.dismissed_lesson_delivery_numbers) ? project.dismissed_lesson_delivery_numbers : []).map(Number));
+  if (Number(record.lesson_number) > 0) dismissedNumbers.add(Number(record.lesson_number));
+  project.dismissed_lesson_delivery_numbers = [...dismissedNumbers].sort((left, right) => left - right);
   project.lesson_durations = project.lesson_durations.filter((item) => item.id !== recordId);
   project.updated_at = new Date().toISOString();
   saveWorkspace(); showToast("已刪除堂數紀錄"); render();
+}
+
+function toggleLessonDelivery(recordId, field, done, input = null) {
+  const project = projectById(state.selectedProjectId);
+  const record = project?.lesson_durations?.find((item) => item.id === recordId);
+  if (!project || !record || !LESSON_DELIVERY_STEPS.some((step) => step.field === field)) return;
+  const now = new Date().toISOString();
+  record[field] = Boolean(done);
+  record.updated_at = now;
+  project.updated_at = now;
+  saveWorkspace();
+
+  const delivery = lessonDeliveryState(project, record);
+  const row = input?.closest("[data-duration-record]");
+  input?.closest(".lesson-delivery-option")?.classList.toggle("checked", Boolean(done));
+  row?.classList.toggle("delivery-complete", LESSON_DELIVERY_STEPS.every((step) => delivery[step.field]));
+  const summary = projectBillingSummary(project);
+  const progress = typeof document === "undefined" ? null : document.querySelector("[data-delivery-progress]");
+  const completed = typeof document === "undefined" ? null : document.querySelector("[data-delivery-summary]");
+  if (progress) progress.textContent = `交付 ${summary.delivery.completedSteps}/${summary.delivery.totalSteps}`;
+  if (completed) completed.textContent = `${summary.delivery.completedLessons} 堂全數完成`;
 }
 
 function startProjectMessageReply(messageId) {

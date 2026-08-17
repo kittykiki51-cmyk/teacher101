@@ -27,9 +27,11 @@ function runProjectActionForTest(action, id) {
 }
 return {
   state, todayISO, monthKey, offsetMonthKey, renderDashboard, renderProjects, renderProjectDetail, renderSettings, renderCalendar,
+  normalizeWorkspace,
   projectMilestone, projectFinished, projectGanttSchedule, projectGanttPriority, projectGanttTooltip, taskList,
   normalizedStageValue, projectStageDisplay, STAGE_DEFINITIONS, PROJECT_MESSAGE_TYPES, projectMessageType,
   BILLING_METHODS, lessonDurationSeconds, formatLongDuration, billableHours, projectBillingSummary,
+  LESSON_DELIVERY_STEPS, lessonDeliveryState, lessonDeliverySummary, projectOperationalChecklistGroups,
   projectCompletionSummary, archiveYearSelection, notificationSettingsState, validEmailAddress,
   monthlyGoalProjects, taskDurationMinutes, taskTimeLabel, taskInterval, taskTimeConflicts,
   completeProjectForTest: (id) => runProjectActionForTest(completeProject, id),
@@ -40,6 +42,7 @@ return {
   saveProjectBillingSettingsForTest: (values) => runProjectActionForTest(() => saveProjectBillingSettings({ preventDefault() {}, currentTarget: { values } })),
   addLessonDurationRecordForTest: (id) => runProjectActionForTest(addLessonDurationRecord, id),
   saveLessonDurationRecordForTest: (id, values) => runProjectActionForTest(() => saveLessonDurationRecord({ preventDefault() {}, currentTarget: { dataset: { durationRecord: id }, values } })),
+  toggleLessonDeliveryForTest: (id, field, done) => runProjectActionForTest(() => toggleLessonDelivery(id, field, done), id),
   deleteLessonDurationRecordForTest: (id) => runProjectActionForTest(deleteLessonDurationRecord, id),
 };`)(browserWindow, storage, () => true, { randomUUID: () => "12345678-1234-1234-1234-123456789abc" }, MockFormData, () => {});
 
@@ -61,8 +64,8 @@ const project = {
   hourly_rate: 1500,
   billing_method: "exact",
   lesson_durations: [
-    { id: "duration-1", lesson_number: 1, hours: 0, minutes: 57, seconds: 30, note: "Lesson one" },
-    { id: "duration-2", lesson_number: 2, hours: 1, minutes: 2, seconds: 30, note: "Lesson two" },
+    { id: "duration-1", lesson_number: 1, hours: 0, minutes: 57, seconds: 30, note: "Lesson one", syllabus_ready: true, video_uploaded: true, subtitles_uploaded: false, handout_uploaded: false },
+    { id: "duration-2", lesson_number: 2, hours: 1, minutes: 2, seconds: 30, note: "Lesson two", syllabus_ready: true, video_uploaded: true, subtitles_uploaded: true, handout_uploaded: true },
   ],
   links: { "講師 Gmail": "teacher@gmail.com" },
 };
@@ -100,10 +103,31 @@ harness.state.workspace = {
   projects: [project, completedProject, nextProject, deferredNextProject],
   tasks: [generalTask, phoneTask],
   calendar_events: [importantEvent],
-  checklists: [{ id: "group-mobile", project_id: project.id, name: "Launch", items: [{ id: "check-mobile", title: "Final review", done: false }] }],
+  checklists: [{ id: "group-mobile", project_id: project.id, name: "Launch", items: [
+    { id: "check-legacy-delivery", title: "第一堂 字幕＋課綱單元建置", done: true },
+    { id: "check-mobile", title: "Final review", done: false },
+  ] }],
   progress_logs: [], project_messages: [teacherMessage, replyMessage, importantMessage], history: [], archives: [], deleted_ids: {},
 };
 harness.state.selectedProjectId = project.id;
+
+const migratedWorkspace = harness.normalizeWorkspace({
+  settings: { monthly_goal: 2 },
+  projects: [{ id: "legacy-video", mode: "recorded" }],
+  tasks: [], calendar_events: [], progress_logs: [], project_messages: [], history: [], archives: [], deleted_ids: {},
+  checklists: [{ id: "legacy-group", project_id: "legacy-video", items: [
+    { id: "legacy-one", title: "第一堂＋字幕+課綱單元建置", done: true },
+    { id: "legacy-two", title: "第二堂＋字幕+課綱單元建置", done: false },
+  ] }],
+});
+assert(migratedWorkspace.projects[0].lesson_durations.length === 2, "Legacy per-lesson delivery checklists should create the missing recorded-course lesson rows");
+assert(migratedWorkspace.projects[0].lesson_durations[0].syllabus_ready === true && migratedWorkspace.projects[0].lesson_durations[0].subtitles_uploaded === true, "Legacy combined syllabus and subtitle completion should migrate to both delivery checkboxes");
+assert(migratedWorkspace.projects[0].lesson_durations[1].syllabus_ready === false && migratedWorkspace.projects[0].lesson_durations[1].subtitles_uploaded === false, "Incomplete legacy lesson delivery should remain unchecked after migration");
+const dismissedWorkspace = harness.normalizeWorkspace({
+  ...migratedWorkspace,
+  projects: [{ ...migratedWorkspace.projects[0], lesson_durations: [], dismissed_lesson_delivery_numbers: [2] }],
+});
+assert(dismissedWorkspace.projects[0].lesson_durations.length === 1 && dismissedWorkspace.projects[0].lesson_durations[0].lesson_number === 1, "A deleted migrated lesson should not be recreated on the next login");
 
 const dashboard = harness.renderDashboard();
 assert(dashboard.includes("today-work-panel"), "Dashboard should identify today's work for mobile ordering");
@@ -159,7 +183,7 @@ assert(harness.projectMilestone({ current_stage: "已上架", status: "已上架
 assert(harness.normalizedStageValue({ current_stage: "課程錄製", status: "進行中" }) === "完成規格書／規格書撰寫／影音錄製中", "Legacy recording stages should remain compatible");
 assert(harness.projectStageDisplay({ current_stage: "影片後製", status: "進行中" }) === "90% 已班級排課／錄製完成", "Legacy post-production stages should display the new category");
 const completionSummary = harness.projectCompletionSummary(project.id);
-assert(completionSummary.workTasks.length === 1 && completionSummary.phoneTasks.length === 1 && completionSummary.checklistItems.length === 1, "Project completion should warn about pending work, calls, and checklist items separately");
+assert(completionSummary.workTasks.length === 1 && completionSummary.phoneTasks.length === 1 && completionSummary.deliveryItems.length === 2 && completionSummary.checklistItems.length === 1, "Project completion should warn about pending work, calls, video delivery, and checklist items separately");
 harness.state.projectView = "table";
 const summaryProjects = harness.renderProjects();
 assert(summaryProjects.includes("project-summary-table"), "Desktop summary view should render a project table");
@@ -195,7 +219,7 @@ const workDetail = harness.renderProjectDetail();
 assert(workDetail.includes("project-mobile-tabs"), "Project details should provide mobile tabs");
 assert(workDetail.includes('data-project-complete="project-mobile"'), "Active project details should provide a complete-project action");
 assert(workDetail.includes('data-project-mobile-panel="work"'), "Project work panel should be available");
-assert(workDetail.includes('data-project-mobile-panel="billing"') && workDetail.includes("影片時數與鐘點費"), "Project details should provide the duration and hourly-fee panel");
+assert(workDetail.includes('data-project-mobile-panel="billing"') && workDetail.includes("影片時數與交付進度"), "Recorded project details should provide the combined duration, fee, and delivery panel");
 assert(workDetail.includes('data-project-mobile-panel="checklist"'), "Project checklist panel should be available");
 assert(workDetail.includes('data-project-mobile-panel="message"'), "Project message panel should be available");
 assert(workDetail.includes('data-project-mobile-panel="history"'), "Project history panel should be available");
@@ -206,18 +230,30 @@ assert(harness.formatLongDuration(7200) === "2 小時 0 分 0 秒", "Total durat
 assert(harness.billableHours(3660, "half_hour") === 1.5 && harness.billableHours(3660, "hour") === 2, "Optional billing rules should round the total duration predictably");
 assert(workDetail.includes("2 小時 0 分 0 秒") && workDetail.includes("NT$3,000"), "The billing panel should display the total duration and estimated fee");
 assert(workDetail.includes('data-duration-add="project-mobile"') && workDetail.includes('data-duration-record="duration-1"'), "The billing panel should allow lessons to be added and individually saved");
+assert(JSON.stringify(harness.LESSON_DELIVERY_STEPS.map((step) => step.label)) === JSON.stringify(["系統課綱建置", "影片壓縮後上傳", "字幕上傳", "講義上傳"]), "Recorded lessons should expose only the four requested delivery steps");
+assert(workDetail.includes('data-duration-field="syllabus_ready"') && workDetail.includes('data-duration-field="handout_uploaded"'), "Every recorded lesson should render direct delivery checkboxes");
+assert(billingSummary.delivery.completedSteps === 6 && billingSummary.delivery.completedLessons === 1, "Delivery progress should count completed steps and fully delivered lessons");
+assert(workDetail.includes("交付 6/8") && workDetail.includes("1 堂全數完成"), "The billing panel should summarize lesson delivery progress");
+const operationalGroups = harness.projectOperationalChecklistGroups(project);
+assert(operationalGroups.length === 1 && operationalGroups[0].items.length === 1 && operationalGroups[0].items[0].title === "Final review", "Recognized legacy lesson-delivery items should move out of the right operational checklist without deleting custom work");
+harness.toggleLessonDeliveryForTest("duration-1", "subtitles_uploaded", true);
+harness.toggleLessonDeliveryForTest("duration-1", "handout_uploaded", true);
+assert(harness.lessonDeliverySummary(project).completedSteps === 8 && harness.lessonDeliverySummary(project).completedLessons === 2, "Delivery checkboxes should save independently and complete a lesson only after all four steps are checked");
 harness.saveProjectBillingSettingsForTest({ mode: "直播", hourly_rate: "1800", billing_method: "half_hour" });
 assert(project.mode === "live" && project.hourly_rate === 1800 && project.billing_method === "half_hour", "Billing settings should save the course type, hourly rate, and billing method");
 const liveProjectDetail = harness.renderProjectDetail();
 assert(!liveProjectDetail.includes('data-project-mobile-panel="billing"') && !liveProjectDetail.includes('data-project-mobile-tab="billing"'), "Live projects should hide both the billing panel and its mobile tab without deleting stored records");
 assert(project.lesson_durations.length === 2, "Hiding live-project billing should preserve existing duration records");
+assert(harness.projectOperationalChecklistGroups(project)[0].items.length === 2, "Live projects should retain legacy checklist items because lesson delivery is hidden");
 project.mode = "recorded";
 harness.saveLessonDurationRecordForTest("duration-1", { lesson_number: "1", hours: "1", minutes: "0", seconds: "0", note: "Updated lesson" });
 assert(project.lesson_durations[0].hours === 1 && project.lesson_durations[0].note === "Updated lesson", "An individual lesson duration should save valid hour-minute-second values");
 harness.addLessonDurationRecordForTest(project.id);
 assert(project.lesson_durations.length === 3 && project.lesson_durations[2].lesson_number === 3, "Adding a lesson should create the next lesson number");
+assert(harness.LESSON_DELIVERY_STEPS.every((step) => project.lesson_durations[2][step.field] === false), "A new lesson should start with every delivery step unchecked");
 harness.deleteLessonDurationRecordForTest(project.lesson_durations[2].id);
 assert(project.lesson_durations.length === 2, "An individual lesson duration should be removable after confirmation");
+assert(project.dismissed_lesson_delivery_numbers.includes(3), "Deleting a lesson should remember that legacy delivery data must not recreate it");
 
 harness.state.projectMobileTab = "message";
 const messageDetail = harness.renderProjectDetail();
@@ -279,6 +315,7 @@ const dashboardPanelStyles = styles.slice(dashboardPanelStart, styles.indexOf("\
 assert(dashboardPanelStyles.includes("background: var(--surface)") && dashboardPanelStyles.includes("border: 1px solid var(--border)"), "Dashboard panels should retain their white framed surfaces");
 assert(styles.includes(".project-mobile-tabs"), "Mobile project tab styles should exist");
 assert(styles.includes(".billing-summary") && styles.includes(".lesson-duration-row"), "Duration and fee calculator styles should exist");
+assert(styles.includes(".lesson-delivery-checks") && styles.includes(".lesson-delivery-option.checked"), "Lesson delivery checkboxes should provide desktop, mobile, and completed states");
 assert(styles.includes(".message-type-picker") && styles.includes(".message-thread-replies"), "Message category and linked-reply styles should exist");
 assert(styles.includes("place-items: end stretch"), "Mobile dialogs should open as bottom sheets");
 assert(styles.includes("env(safe-area-inset-bottom)"), "Mobile controls should account for device safe areas");
@@ -307,15 +344,15 @@ assert(styles.includes(".task-conflict-warning") && styles.includes("border-left
 const index = read("../index.html");
 assert(index.includes("mobile-button-label"), "Mobile top bar should use a compact add label");
 assert(index.includes('href="app-icon.svg"') && index.includes('href="app-icon-192.png"'), "The app should publish browser and home-screen icons");
-assert(index.includes('styles.css?v=37') && index.includes('app.js?v=37'), "The page should request versioned assets after the mobile WebKit layout fix");
+assert(index.includes('styles.css?v=38') && index.includes('app.js?v=38'), "The page should request versioned assets after the recorded-course delivery update");
 
 const manifest = read("../manifest.json");
 assert(manifest.includes("app-icon-192.png") && manifest.includes("app-icon-512.png") && manifest.includes("maskable"), "The PWA manifest should publish installable app icons");
 
 const worker = read("../service-worker.js");
 new Function(worker);
-assert(worker.includes('teacher-operations-v37'), "PWA cache should be refreshed after the mobile WebKit layout fix");
-assert(worker.includes('"/styles.css?v=37"') && worker.includes('"/app.js?v=37"'), "The PWA shell should cache versioned application assets");
+assert(worker.includes('teacher-operations-v38'), "PWA cache should be refreshed after the recorded-course delivery update");
+assert(worker.includes('"/styles.css?v=38"') && worker.includes('"/app.js?v=38"'), "The PWA shell should cache versioned application assets");
 assert(worker.includes("event.respondWith(updateCache.catch"), "Online application assets should load from the network before falling back to cache");
 assert(worker.includes("icon-house.svg") && worker.includes("app-icon-512.png"), "The PWA shell should cache identity and navigation assets");
 assert(worker.includes('LOGIN_PATHS.has(url.pathname)'), "The service worker should leave login documents and assets to the network");
