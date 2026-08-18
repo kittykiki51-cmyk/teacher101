@@ -9,7 +9,7 @@ const source = $.NSString.stringWithContentsOfFileEncodingError(sourcePath, $.NS
 const testableSource = source.replace(/\ninitializeApp\(\);\s*$/, "");
 const storage = { getItem: () => null, setItem: () => null, removeItem: () => null };
 const browserWindow = { location: { protocol: "file:" }, INITIAL_WORKSPACE: null };
-const harness = new Function("window", "localStorage", `${testableSource}\nreturn { state, todayISO, parseDate, humanDate, renderMonthCalendar, renderWeekCalendar, renderDayCalendar, renderCalendarPanel, renderCalendarPanelTask, renderCalendarPanelEvent, renderMobileCalendarAgenda, calendarEventsOnDate, calendarImportantTimeLabel, calendarImportantType, calendarImportantColor, calendarColor, calendarTaskKind, calendarHours, calendarDoubleActivation, CALENDAR_EVENT_TYPES };`)(browserWindow, storage);
+const harness = new Function("window", "localStorage", `${testableSource}\nreturn { state, todayISO, parseDate, humanDate, renderMonthCalendar, renderWeekCalendar, renderDayCalendar, renderCalendarPanel, renderCalendarPanelTask, renderCalendarPanelEvent, renderMobileCalendarAgenda, calendarEventsOnDate, calendarEventCompleted, calendarImportantTimeLabel, calendarImportantType, calendarImportantColor, calendarColor, calendarTaskKind, calendarHours, calendarDoubleActivation, CALENDAR_EVENT_TYPES };`)(browserWindow, storage);
 
 const today = harness.todayISO();
 assert(JSON.stringify(harness.CALENDAR_EVENT_TYPES) === JSON.stringify(["休假", "邀約面試", "線上面試會議", "部門會議", "公告活動日"]), "Important events should expose the five requested color-coded categories");
@@ -61,6 +61,7 @@ assert(panel.includes("重要行程") && panel.includes("工作項目"), "Select
 assert(panel.indexOf("Course meeting") < panel.indexOf("Personal"), "Important events should appear before work in the selected-date panel");
 const eventPanel = harness.renderCalendarPanelEvent(harness.state.workspace.calendar_events[0]);
 assert(eventPanel.includes('data-project-open="project-alpha"') && eventPanel.includes("前往專案"), "Linked important events should open their project");
+assert(eventPanel.includes('data-calendar-event-complete="event-1"') && eventPanel.includes("完成"), "Important events should expose a completion action");
 assert(harness.calendarImportantTimeLabel(harness.state.workspace.calendar_events[0]) === "13:00–14:30", "Important events should display their full time range");
 assert(harness.calendarImportantType({ event_type: "unknown" }) === "部門會議", "Unknown imported event types should use a safe visible fallback");
 assert(harness.calendarImportantType({ event_type: "會議" }) === "部門會議", "Legacy meeting records should remain visible under the closest current category");
@@ -71,6 +72,12 @@ assert(harness.calendarImportantColor({ event_type: "線上面試會議" }).colo
 assert(harness.calendarImportantColor({ event_type: "部門會議" }).color === "#596573", "Department meetings should use gray");
 assert(harness.calendarImportantColor({ event_type: "公告活動日" }).color === "#7457c5", "Announcement event days should use purple");
 assert(harness.calendarImportantType({ event_type: "公告" }) === "公告活動日", "Legacy announcements should migrate to announcement event days");
+assert(harness.calendarEventCompleted({ status: "已完成" }), "Completed important events should have an explicit persisted state");
+assert(!harness.calendarEventCompleted({ status: "未完成" }), "Pending important events should remain active");
+const completedEvent = harness.state.workspace.calendar_events[0];
+completedEvent.status = "已完成";
+assert(!harness.calendarEventsOnDate(today).some((event) => event.id === completedEvent.id), "Completed important events should leave the active calendar list");
+completedEvent.status = "未完成";
 const projectPanelTask = harness.renderCalendarPanelTask(harness.state.workspace.tasks[1]);
 const personalPanelTask = harness.renderCalendarPanelTask(harness.state.workspace.tasks[0]);
 const completedProjectPanelTask = harness.renderCalendarPanelTask({ ...harness.state.workspace.tasks[1], status: "已完成" });

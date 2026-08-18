@@ -71,6 +71,7 @@ export function dueCalendarEvents(workspace, now) {
   const due = [];
   const currentMinute = Math.floor(now.getTime() / 60000) * 60000;
   for (const event of workspace.calendar_events || []) {
+    if (event.status === "已完成") continue;
     if (!event.date || event.reminder_minutes === "" || event.reminder_minutes === null || event.reminder_minutes === undefined) continue;
     const time = event.all_day || !event.time ? "09:00" : event.time;
     const scheduled = localTimestamp(event.date, time);

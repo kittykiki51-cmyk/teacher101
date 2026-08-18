@@ -2815,6 +2815,17 @@ button:disabled {
   padding-left: 0;
 }
 
+.calendar-event-actions .calendar-event-complete {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: #fff;
+}
+
+.calendar-event-actions .calendar-event-complete:hover {
+  border-color: var(--primary-hover);
+  background: var(--primary-hover);
+}
+
 .calendar-panel-task {
   display: grid;
   gap: 9px;

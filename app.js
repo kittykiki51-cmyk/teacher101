@@ -846,9 +846,13 @@ function sortCalendarImportantEvents(a, b) {
   return `${a.all_day || !a.time ? "0" : "1"} ${a.time || "00:00"} ${a.title || ""}`.localeCompare(`${b.all_day || !b.time ? "0" : "1"} ${b.time || "00:00"} ${b.title || ""}`, "zh-Hant");
 }
 
+function calendarEventCompleted(event) {
+  return event?.status === STATUS_COMPLETED;
+}
+
 function todayCalendarEvents() {
   return state.workspace.calendar_events
-    .filter((event) => event.date === todayISO())
+    .filter((event) => event.date === todayISO() && !calendarEventCompleted(event))
     .sort(sortCalendarImportantEvents);
 }
 
@@ -1956,7 +1960,7 @@ function calendarImportantEventMatches(event) {
 
 function calendarEventsOnDate(iso) {
   return state.workspace.calendar_events
-    .filter((event) => event.date === iso && calendarImportantEventMatches(event))
+    .filter((event) => event.date === iso && !calendarEventCompleted(event) && calendarImportantEventMatches(event))
     .sort(sortCalendarImportantEvents);
 }
 
@@ -2029,7 +2033,7 @@ function renderCalendarPanelEvent(event) {
   const locationText = event.location ? ` · ${event.location}` : "";
   return `<article class="calendar-panel-event" style="${calendarImportantColorStyle(event)}">
     <button type="button" class="calendar-panel-event-copy" data-calendar-event-edit="${escapeHTML(event.id)}"><span class="calendar-event-type">${escapeHTML(calendarImportantType(event))}</span><span><strong>${escapeHTML(event.title || "未命名行程")}</strong><small>${escapeHTML(`${calendarImportantTimeLabel(event)}${locationText}`)}${event.reminder_minutes !== undefined && event.reminder_minutes !== "" ? ` · ${escapeHTML(reminderLabel(event.reminder_minutes))}` : ""}</small>${event.note ? `<em>${escapeHTML(event.note)}</em>` : ""}</span></button>
-    <div class="calendar-event-actions">${project ? `<button class="small-button project-jump-button" data-project-open="${escapeHTML(project.id)}">前往專案</button>` : ""}${link ? `<button class="small-button" data-open-url="${escapeHTML(link)}">開啟連結</button>` : ""}<button class="small-button" data-calendar-event-edit="${escapeHTML(event.id)}">編輯</button><button class="calendar-delete-button" data-calendar-event-delete="${escapeHTML(event.id)}">刪除</button></div>
+    <div class="calendar-event-actions"><button class="small-button calendar-event-complete" data-calendar-event-complete="${escapeHTML(event.id)}">完成</button>${project ? `<button class="small-button project-jump-button" data-project-open="${escapeHTML(project.id)}">前往專案</button>` : ""}${link ? `<button class="small-button" data-open-url="${escapeHTML(link)}">開啟連結</button>` : ""}<button class="small-button" data-calendar-event-edit="${escapeHTML(event.id)}">編輯</button><button class="calendar-delete-button" data-calendar-event-delete="${escapeHTML(event.id)}">刪除</button></div>
   </article>`;
 }
 
@@ -2475,6 +2479,7 @@ function bindContentEvents() {
     openCalendarEventDialog(state.workspace.calendar_events.find((item) => item.id === button.dataset.calendarEventEdit));
   }));
   document.querySelectorAll("[data-calendar-event-add]").forEach((button) => button.addEventListener("click", () => openCalendarEventDialog(null, button.dataset.calendarEventAdd || state.selectedCalendarDate)));
+  document.querySelectorAll("[data-calendar-event-complete]").forEach((button) => button.addEventListener("click", () => completeCalendarEvent(button.dataset.calendarEventComplete)));
   document.querySelectorAll("[data-postpone]").forEach((button) => button.addEventListener("click", () => postponeTask(button.dataset.postpone)));
   document.querySelectorAll("[data-task-select]").forEach((input) => input.addEventListener("change", () => {
     input.checked ? state.selectedTaskIds.add(input.dataset.taskSelect) : state.selectedTaskIds.delete(input.dataset.taskSelect);
@@ -3294,7 +3299,7 @@ function saveCalendarEventFromForm(event) {
     showToast("連結必須是有效的 http 或 https 網址");
     return;
   }
-  const item = state.workspace.calendar_events.find((entry) => entry.id === eventId) || { id: uid("event"), created_at: new Date().toISOString() };
+  const item = state.workspace.calendar_events.find((entry) => entry.id === eventId) || { id: uid("event"), status: "未完成", created_at: new Date().toISOString() };
   Object.assign(item, {
     event_type: CALENDAR_EVENT_TYPES.includes(String(form.get("event_type"))) ? String(form.get("event_type")) : "部門會議",
     title: String(form.get("title") || "").trim(),
@@ -3321,6 +3326,23 @@ function deleteCalendarEvent(eventId) {
   markDeleted(eventId);
   state.workspace.calendar_events = state.workspace.calendar_events.filter((entry) => entry.id !== eventId);
   saveWorkspace(); closeModal(); showToast("重要行程已刪除"); render();
+}
+
+function completeCalendarEvent(eventId) {
+  const item = state.workspace.calendar_events.find((entry) => entry.id === eventId);
+  if (!item || calendarEventCompleted(item)) return;
+  const eventsBeforeCompletion = state.workspace.calendar_events.map((entry) => ({ ...entry }));
+  item.status = STATUS_COMPLETED;
+  item.completed_at = new Date().toISOString().slice(0, 19);
+  item.updated_at = new Date().toISOString();
+  saveWorkspace();
+  showToast("重要行程已完成", () => {
+    state.workspace.calendar_events = eventsBeforeCompletion;
+    saveWorkspace();
+    render();
+    showToast("已復原完成狀態");
+  });
+  render();
 }
 
 function openTaskDialog(task = null, projectId = "") {

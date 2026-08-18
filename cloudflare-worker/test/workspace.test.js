@@ -41,6 +41,7 @@ test("task and calendar reminders use Asia/Taipei wall-clock time", () => {
     calendar_events: [
       { id: "timed", date: "2026-08-17", time: "11:00", all_day: false, reminder_minutes: "60" },
       { id: "all-day", date: "2026-08-17", all_day: true, reminder_minutes: "0" },
+      { id: "done-event", date: "2026-08-17", time: "11:00", all_day: false, reminder_minutes: "60", status: "已完成" },
     ],
   });
   assert.deepEqual(dueTasks(data, new Date("2026-08-17T01:50:00Z")).map((item) => item.id), ["task"]);

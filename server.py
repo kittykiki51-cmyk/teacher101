@@ -494,6 +494,8 @@ def due_calendar_events(workspace: dict[str, Any], now: datetime) -> list[dict[s
     due: list[dict[str, Any]] = []
     current_minute = now.replace(second=0, microsecond=0)
     for event in workspace.get("calendar_events", []):
+        if event.get("status") == "已完成":
+            continue
         if not event.get("date"):
             continue
         reminder = event.get("reminder_minutes")

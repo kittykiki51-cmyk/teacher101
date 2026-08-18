@@ -62,6 +62,7 @@ reminder_workspace = workspace_payload()
 reminder_workspace["calendar_events"] = [
     {"id": "timed", "date": "2026-08-11", "time": "10:00", "all_day": False, "reminder_minutes": "10"},
     {"id": "all-day", "date": "2026-08-11", "all_day": True, "reminder_minutes": "0"},
+    {"id": "done", "date": "2026-08-11", "time": "10:00", "all_day": False, "reminder_minutes": "10", "status": "已完成"},
 ]
 timed_due = server.due_calendar_events(reminder_workspace, datetime(2026, 8, 11, 9, 50, tzinfo=server.APP_TIMEZONE))
 all_day_due = server.due_calendar_events(reminder_workspace, datetime(2026, 8, 11, 9, 0, tzinfo=server.APP_TIMEZONE))

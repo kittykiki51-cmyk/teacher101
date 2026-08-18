@@ -38,6 +38,7 @@ return {
   monthlyGoalProjects, taskDurationMinutes, taskTimeLabel, taskInterval, taskTimeConflicts,
   completeProjectForTest: (id) => runProjectActionForTest(completeProject, id),
   reopenProjectForTest: (id) => runProjectActionForTest(reopenProject, id),
+  completeCalendarEventForTest: (id) => runProjectActionForTest(completeCalendarEvent, id),
   updateProjectMessageTypeForTest: (id, type) => runProjectActionForTest(() => updateProjectMessageType(id, type), id),
   startProjectMessageReplyForTest: (id) => runProjectActionForTest(startProjectMessageReply, id),
   addProjectMessageForTest: (values) => runProjectActionForTest(() => addProjectMessage({ preventDefault() {}, currentTarget: { values } })),
@@ -166,6 +167,11 @@ assert(dashboard.includes("empty-state") || dashboard.includes("home-task-row"),
 assert(dashboard.includes(`data-project-open="${project.id}"`) && dashboard.includes("專案：Mobile Course"), "Today's work should link directly to its course project");
 assert(dashboard.includes(`data-project-month-open="${currentMonth}"`) && dashboard.includes(`data-project-month-open="${nextMonth}"`), "Dashboard should provide current and next month project goal shortcuts");
 assert(dashboard.includes("today-events-panel") && dashboard.includes("Today meeting"), "Dashboard should show today's important-event section when it has content");
+const completionEvent = { ...importantEvent };
+harness.state.workspace.calendar_events = [completionEvent];
+harness.completeCalendarEventForTest(completionEvent.id);
+assert(completionEvent.status === "已完成" && completionEvent.completed_at, "Completing an important event should persist its completed state and time");
+assert(!harness.renderDashboard().includes("today-events-panel"), "Completed important events should leave the dashboard's active section");
 harness.state.workspace.calendar_events = [];
 assert(!harness.renderDashboard().includes("today-events-panel"), "Dashboard should hide the important-event section when today has no entries");
 harness.state.workspace.calendar_events = [importantEvent];
@@ -375,15 +381,15 @@ assert(styles.includes(".task-conflict-warning") && styles.includes("border-left
 const index = read("../index.html");
 assert(index.includes("mobile-button-label"), "Mobile top bar should use a compact add label");
 assert(index.includes('href="app-icon.svg"') && index.includes('href="app-icon-192.png"'), "The app should publish browser and home-screen icons");
-assert(index.includes('styles.css?v=40') && index.includes('app.js?v=40'), "The page should request versioned assets after the video-template update");
+assert(index.includes('styles.css?v=41') && index.includes('app.js?v=41'), "The page should request versioned assets after the important-event completion update");
 
 const manifest = read("../manifest.json");
 assert(manifest.includes("app-icon-192.png") && manifest.includes("app-icon-512.png") && manifest.includes("maskable"), "The PWA manifest should publish installable app icons");
 
 const worker = read("../service-worker.js");
 new Function(worker);
-assert(worker.includes('teacher-operations-v40'), "PWA cache should be refreshed after the video-template update");
-assert(worker.includes('"/styles.css?v=40"') && worker.includes('"/app.js?v=40"'), "The PWA shell should cache versioned application assets");
+assert(worker.includes('teacher-operations-v41'), "PWA cache should be refreshed after the important-event completion update");
+assert(worker.includes('"/styles.css?v=41"') && worker.includes('"/app.js?v=41"'), "The PWA shell should cache versioned application assets");
 assert(worker.includes("event.respondWith(updateCache.catch"), "Online application assets should load from the network before falling back to cache");
 assert(worker.includes("icon-house.svg") && worker.includes("app-icon-512.png"), "The PWA shell should cache identity and navigation assets");
 assert(worker.includes('LOGIN_PATHS.has(url.pathname)'), "The service worker should leave login documents and assets to the network");
