@@ -20,6 +20,9 @@ const BILLING_METHODS = [
 ];
 const LESSON_DELIVERY_STEPS = [
   { field: "syllabus_ready", label: "系統課綱建置" },
+  { field: "video_first_cut", label: "影片剪輯（初版）" },
+  { field: "subtitles_generated", label: "字幕生成" },
+  { field: "subtitles_corrected", label: "字幕修正" },
   { field: "video_uploaded", label: "影片壓縮後上傳" },
   { field: "subtitles_uploaded", label: "字幕上傳" },
   { field: "handout_uploaded", label: "講義上傳" },
@@ -665,7 +668,7 @@ function projectTemplateSummary(template) {
 function newLessonDurationRecord(lessonNumber, timestamp = new Date().toISOString()) {
   return {
     id: uid("duration"), lesson_number: lessonNumber, hours: 0, minutes: 0, seconds: 0, note: "",
-    syllabus_ready: false, video_uploaded: false, subtitles_uploaded: false, handout_uploaded: false,
+    ...Object.fromEntries(LESSON_DELIVERY_STEPS.map(({ field }) => [field, false])),
     created_at: timestamp, updated_at: timestamp,
   };
 }
@@ -1790,7 +1793,7 @@ function renderLessonDurationRow(record, project) {
   return `<form class="lesson-duration-row ${deliveryComplete ? "delivery-complete" : ""}" data-duration-record="${escapeHTML(record.id)}">
     <div class="lesson-row-heading">
       <strong>第 ${lessonNumber} 堂</strong>
-      <div class="lesson-row-heading-actions"><span class="${deliveryComplete ? "complete" : ""}" data-lesson-delivery-label>${deliveryComplete ? "交付完成" : `${completedSteps}/4 項完成`}</span><button type="button" class="ghost-button lesson-schedule-button" data-lesson-schedule="${escapeHTML(record.id)}" ${deliveryComplete ? "hidden" : ""}>排程未完成項目</button></div>
+      <div class="lesson-row-heading-actions"><span class="${deliveryComplete ? "complete" : ""}" data-lesson-delivery-label>${deliveryComplete ? "交付完成" : `${completedSteps}/${LESSON_DELIVERY_STEPS.length} 項完成`}</span><button type="button" class="ghost-button lesson-schedule-button" data-lesson-schedule="${escapeHTML(record.id)}" ${deliveryComplete ? "hidden" : ""}>排程未完成項目</button></div>
     </div>
     <div class="lesson-duration-fields">
       <label><span>堂數</span><input class="input" type="number" name="lesson_number" min="1" max="999" step="1" inputmode="numeric" value="${lessonNumber}" required></label>
@@ -3842,7 +3845,7 @@ function toggleLessonDelivery(recordId, field, done, input = null) {
   row?.classList.toggle("delivery-complete", deliveryComplete);
   const rowLabel = row?.querySelector("[data-lesson-delivery-label]");
   if (rowLabel) {
-    rowLabel.textContent = deliveryComplete ? "交付完成" : `${completedSteps}/4 項完成`;
+    rowLabel.textContent = deliveryComplete ? "交付完成" : `${completedSteps}/${LESSON_DELIVERY_STEPS.length} 項完成`;
     rowLabel.classList.toggle("complete", deliveryComplete);
   }
   const scheduleButton = row?.querySelector("[data-lesson-schedule]");
