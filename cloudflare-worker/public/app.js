@@ -24,6 +24,7 @@ const LESSON_DELIVERY_STEPS = [
   { field: "subtitles_generated", label: "字幕生成" },
   { field: "subtitles_corrected", label: "字幕修正" },
   { field: "video_uploaded", label: "影片壓縮後上傳" },
+  { field: "video_shortcuts_ready", label: "影片快捷鍵建置" },
   { field: "subtitles_uploaded", label: "字幕上傳" },
   { field: "handout_uploaded", label: "講義上傳" },
 ];

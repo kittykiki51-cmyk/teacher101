@@ -1,6 +1,6 @@
-const CACHE_NAME = "teacher-operations-v44";
+const CACHE_NAME = "teacher-operations-v45";
 const APP_SHELL = [
-  "/", "/styles.css?v=44", "/app.js?v=44", "/manifest.json", "/app-icon.svg",
+  "/", "/styles.css?v=45", "/app.js?v=45", "/manifest.json", "/app-icon.svg",
   "/app-icon-192.png", "/app-icon-512.png", "/icon-house.svg", "/icon-folders.svg",
   "/icon-calendar-days.svg", "/icon-settings.svg",
 ];

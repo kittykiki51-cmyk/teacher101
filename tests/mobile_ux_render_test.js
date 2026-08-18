@@ -69,8 +69,8 @@ const project = {
   hourly_rate: 1500,
   billing_method: "exact",
   lesson_durations: [
-    { id: "duration-1", lesson_number: 1, hours: 0, minutes: 57, seconds: 30, note: "Lesson one", syllabus_ready: true, video_first_cut: false, subtitles_generated: false, subtitles_corrected: false, video_uploaded: true, subtitles_uploaded: false, handout_uploaded: false },
-    { id: "duration-2", lesson_number: 2, hours: 1, minutes: 2, seconds: 30, note: "Lesson two", syllabus_ready: true, video_first_cut: true, subtitles_generated: true, subtitles_corrected: true, video_uploaded: true, subtitles_uploaded: true, handout_uploaded: true },
+    { id: "duration-1", lesson_number: 1, hours: 0, minutes: 57, seconds: 30, note: "Lesson one", syllabus_ready: true, video_first_cut: false, subtitles_generated: false, subtitles_corrected: false, video_uploaded: true, video_shortcuts_ready: false, subtitles_uploaded: false, handout_uploaded: false },
+    { id: "duration-2", lesson_number: 2, hours: 1, minutes: 2, seconds: 30, note: "Lesson two", syllabus_ready: true, video_first_cut: true, subtitles_generated: true, subtitles_corrected: true, video_uploaded: true, video_shortcuts_ready: true, subtitles_uploaded: true, handout_uploaded: true },
   ],
   links: { "講師 Gmail": "teacher@gmail.com" },
 };
@@ -136,7 +136,7 @@ harness.state.workspace.projects.push(templateProject);
 const appliedTemplate = harness.applyProjectTemplate(currentVideoTemplate, templateProject);
 assert(appliedTemplate.lessons === 10 && templateProject.lesson_durations.length === 10, "Applying the upgraded video template should create ten lesson delivery cards");
 assert(appliedTemplate.groups === 1 && appliedTemplate.items === 2, "Applying the upgraded video template should retain only general operational checklist items");
-assert(templateProject.lesson_durations.every((record) => harness.LESSON_DELIVERY_STEPS.every((step) => record[step.field] === false)), "Template-created lessons should start with all seven delivery steps unchecked");
+assert(templateProject.lesson_durations.every((record) => harness.LESSON_DELIVERY_STEPS.every((step) => record[step.field] === false)), "Template-created lessons should start with all eight delivery steps unchecked");
 harness.state.workspace.projects = harness.state.workspace.projects.filter((item) => item.id !== templateProject.id);
 harness.state.workspace.checklists = harness.state.workspace.checklists.filter((group) => group.project_id !== templateProject.id);
 
@@ -217,7 +217,7 @@ assert(harness.projectMilestone({ current_stage: "已上架", status: "已上架
 assert(harness.normalizedStageValue({ current_stage: "課程錄製", status: "進行中" }) === "完成規格書／規格書撰寫／影音錄製中", "Legacy recording stages should remain compatible");
 assert(harness.projectStageDisplay({ current_stage: "影片後製", status: "進行中" }) === "90% 已班級排課／錄製完成", "Legacy post-production stages should display the new category");
 const completionSummary = harness.projectCompletionSummary(project.id);
-assert(completionSummary.workTasks.length === 1 && completionSummary.phoneTasks.length === 1 && completionSummary.deliveryItems.length === 5 && completionSummary.checklistItems.length === 1, "Project completion should warn about pending work, calls, video delivery, and checklist items separately");
+assert(completionSummary.workTasks.length === 1 && completionSummary.phoneTasks.length === 1 && completionSummary.deliveryItems.length === 6 && completionSummary.checklistItems.length === 1, "Project completion should warn about pending work, calls, video delivery, and checklist items separately");
 harness.state.projectView = "table";
 const summaryProjects = harness.renderProjects();
 assert(summaryProjects.includes("project-summary-table"), "Desktop summary view should render a project table");
@@ -265,17 +265,17 @@ assert(harness.formatLongDuration(7200) === "2 小時 0 分 0 秒", "Total durat
 assert(harness.billableHours(3660, "half_hour") === 1.5 && harness.billableHours(3660, "hour") === 2, "Optional billing rules should round the total duration predictably");
 assert(workDetail.includes("2 小時 0 分 0 秒") && workDetail.includes("NT$3,000"), "The billing panel should display the total duration and estimated fee");
 assert(workDetail.includes('data-duration-add="project-mobile"') && workDetail.includes('data-duration-record="duration-1"'), "The billing panel should allow lessons to be added and individually saved");
-assert(JSON.stringify(harness.LESSON_DELIVERY_STEPS.map((step) => step.label)) === JSON.stringify(["系統課綱建置", "影片剪輯（初版）", "字幕生成", "字幕修正", "影片壓縮後上傳", "字幕上傳", "講義上傳"]), "Recorded lessons should expose the seven requested delivery steps in workflow order");
+assert(JSON.stringify(harness.LESSON_DELIVERY_STEPS.map((step) => step.label)) === JSON.stringify(["系統課綱建置", "影片剪輯（初版）", "字幕生成", "字幕修正", "影片壓縮後上傳", "影片快捷鍵建置", "字幕上傳", "講義上傳"]), "Recorded lessons should expose the eight requested delivery steps in workflow order");
 assert(workDetail.includes('data-duration-field="syllabus_ready"') && workDetail.includes('data-duration-field="handout_uploaded"'), "Every recorded lesson should render direct delivery checkboxes");
 assert(workDetail.includes('data-lesson-schedule="duration-1"') && workDetail.includes("排程未完成項目"), "Every incomplete recorded lesson should provide a calendar scheduling action");
 assert(workDetail.includes("lesson-row-heading") && workDetail.includes("第 1 堂") && workDetail.includes("交付完成"), "Every lesson should show a clear lesson heading and delivery state");
-assert(billingSummary.delivery.completedSteps === 9 && billingSummary.delivery.completedLessons === 1, "Delivery progress should count completed steps and fully delivered lessons");
-assert(workDetail.includes("交付 9/14") && workDetail.includes("1 堂全數完成"), "The billing panel should summarize lesson delivery progress");
+assert(billingSummary.delivery.completedSteps === 10 && billingSummary.delivery.completedLessons === 1, "Delivery progress should count completed steps and fully delivered lessons");
+assert(workDetail.includes("交付 10/16") && workDetail.includes("1 堂全數完成"), "The billing panel should summarize lesson delivery progress");
 const operationalGroups = harness.projectOperationalChecklistGroups(project);
 assert(operationalGroups.length === 1 && operationalGroups[0].items.length === 1 && operationalGroups[0].items[0].title === "Final review", "Recognized legacy lesson-delivery items should move out of the right operational checklist without deleting custom work");
-const pendingDeliveryFields = ["video_first_cut", "subtitles_generated", "subtitles_corrected", "subtitles_uploaded", "handout_uploaded"];
+const pendingDeliveryFields = ["video_first_cut", "subtitles_generated", "subtitles_corrected", "video_shortcuts_ready", "subtitles_uploaded", "handout_uploaded"];
 const scheduledDeliveryTasks = harness.scheduleLessonDeliveryTasksForTest("duration-1", pendingDeliveryFields, { date: today, time: "14:00", end_time: "15:00", reminder_minutes: "10" });
-assert(scheduledDeliveryTasks.length === 5, "New and existing unfinished delivery steps should be schedulable together");
+assert(scheduledDeliveryTasks.length === 6, "New and existing unfinished delivery steps should be schedulable together");
 assert(scheduledDeliveryTasks.every((task) => task.project_id === project.id && task.linked_lesson_record_id === "duration-1" && task.title.includes("第 1 堂")), "Scheduled delivery work should retain its project and lesson link");
 assert(harness.scheduleLessonDeliveryTasksForTest("duration-1", pendingDeliveryFields, { date: today, time: "16:00", end_time: "17:00", reminder_minutes: "" }).length === 0, "A delivery step should not create duplicate calendar work");
 assert(harness.lessonDeliveryScheduleLabel(scheduledDeliveryTasks[0]).includes("14:00–15:00"), "Scheduled delivery work should show its date and time on the lesson card");
@@ -287,7 +287,7 @@ assert(scheduledDeliveryTasks[0].status === "未完成", "Unchecking a lesson de
 harness.toggleLessonDeliveryForTest("duration-1", "video_first_cut", true);
 assert(scheduledDeliveryTasks[0].status === "已完成", "Checking a lesson delivery step should complete its linked calendar work");
 scheduledDeliveryTasks.slice(1).forEach((task) => harness.toggleLessonDeliveryForTest("duration-1", task.linked_lesson_delivery_field, true));
-assert(harness.lessonDeliverySummary(project).completedSteps === 14 && harness.lessonDeliverySummary(project).completedLessons === 2, "Delivery checkboxes should save independently and complete a lesson only after all seven steps are checked");
+assert(harness.lessonDeliverySummary(project).completedSteps === 16 && harness.lessonDeliverySummary(project).completedLessons === 2, "Delivery checkboxes should save independently and complete a lesson only after all eight steps are checked");
 harness.saveProjectBillingSettingsForTest({ mode: "直播", hourly_rate: "1800", billing_method: "half_hour" });
 assert(project.mode === "live" && project.hourly_rate === 1800 && project.billing_method === "half_hour", "Billing settings should save the course type, hourly rate, and billing method");
 const liveProjectDetail = harness.renderProjectDetail();
@@ -396,15 +396,15 @@ assert(styles.includes(".task-conflict-warning") && styles.includes("border-left
 const index = read("../index.html");
 assert(index.includes("mobile-button-label"), "Mobile top bar should use a compact add label");
 assert(index.includes('href="app-icon.svg"') && index.includes('href="app-icon-192.png"'), "The app should publish browser and home-screen icons");
-assert(index.includes('styles.css?v=44') && index.includes('app.js?v=44'), "The page should request versioned assets after the seven-step delivery workflow update");
+assert(index.includes('styles.css?v=45') && index.includes('app.js?v=45'), "The page should request versioned assets after the eight-step delivery workflow update");
 
 const manifest = read("../manifest.json");
 assert(manifest.includes("app-icon-192.png") && manifest.includes("app-icon-512.png") && manifest.includes("maskable"), "The PWA manifest should publish installable app icons");
 
 const worker = read("../service-worker.js");
 new Function(worker);
-assert(worker.includes('teacher-operations-v44'), "PWA cache should be refreshed after the seven-step delivery workflow update");
-assert(worker.includes('"/styles.css?v=44"') && worker.includes('"/app.js?v=44"'), "The PWA shell should cache versioned application assets");
+assert(worker.includes('teacher-operations-v45'), "PWA cache should be refreshed after the eight-step delivery workflow update");
+assert(worker.includes('"/styles.css?v=45"') && worker.includes('"/app.js?v=45"'), "The PWA shell should cache versioned application assets");
 assert(worker.includes("event.respondWith(updateCache.catch"), "Online application assets should load from the network before falling back to cache");
 assert(worker.includes("icon-house.svg") && worker.includes("app-icon-512.png"), "The PWA shell should cache identity and navigation assets");
 assert(worker.includes('LOGIN_PATHS.has(url.pathname)'), "The service worker should leave login documents and assets to the network");
