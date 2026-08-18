@@ -611,6 +611,19 @@ body[data-page="projectDetail"] .content {
   font-size: 10px;
 }
 
+.dashboard-event-row.completed {
+  opacity: 0.78;
+}
+
+.dashboard-event-row.completed > span:not(.dashboard-event-type) {
+  text-decoration: line-through;
+}
+
+.dashboard-event-row .dashboard-event-status {
+  color: var(--green);
+  font-weight: 750;
+}
+
 .dashboard-event-type,
 .calendar-event-type {
   border: 1px solid var(--event-border);
@@ -2775,6 +2788,14 @@ button:disabled {
   padding: 10px;
 }
 
+.calendar-panel-event.completed {
+  opacity: 0.78;
+}
+
+.calendar-panel-event.completed .calendar-panel-event-copy strong {
+  text-decoration: line-through;
+}
+
 .calendar-panel-event-copy {
   min-width: 0;
   display: grid;
@@ -3042,6 +3063,21 @@ button.day-cell:hover {
 .calendar-important-event span {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.calendar-important-event.completed {
+  opacity: 0.72;
+}
+
+.calendar-important-event.completed span {
+  text-decoration: line-through;
+}
+
+.calendar-important-event .calendar-important-status {
+  margin-left: 4px;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 800;
 }
 
 .calendar-event-kind {

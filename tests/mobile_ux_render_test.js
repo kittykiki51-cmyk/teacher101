@@ -171,7 +171,7 @@ const completionEvent = { ...importantEvent };
 harness.state.workspace.calendar_events = [completionEvent];
 harness.completeCalendarEventForTest(completionEvent.id);
 assert(completionEvent.status === "已完成" && completionEvent.completed_at, "Completing an important event should persist its completed state and time");
-assert(!harness.renderDashboard().includes("today-events-panel"), "Completed important events should leave the dashboard's active section");
+assert(harness.renderDashboard().includes("today-events-panel") && harness.renderDashboard().includes("已完成"), "Completed important events should remain visible on the dashboard with a completed label");
 harness.state.workspace.calendar_events = [];
 assert(!harness.renderDashboard().includes("today-events-panel"), "Dashboard should hide the important-event section when today has no entries");
 harness.state.workspace.calendar_events = [importantEvent];
@@ -381,15 +381,15 @@ assert(styles.includes(".task-conflict-warning") && styles.includes("border-left
 const index = read("../index.html");
 assert(index.includes("mobile-button-label"), "Mobile top bar should use a compact add label");
 assert(index.includes('href="app-icon.svg"') && index.includes('href="app-icon-192.png"'), "The app should publish browser and home-screen icons");
-assert(index.includes('styles.css?v=41') && index.includes('app.js?v=41'), "The page should request versioned assets after the important-event completion update");
+assert(index.includes('styles.css?v=42') && index.includes('app.js?v=42'), "The page should request versioned assets after the completed-event visibility update");
 
 const manifest = read("../manifest.json");
 assert(manifest.includes("app-icon-192.png") && manifest.includes("app-icon-512.png") && manifest.includes("maskable"), "The PWA manifest should publish installable app icons");
 
 const worker = read("../service-worker.js");
 new Function(worker);
-assert(worker.includes('teacher-operations-v41'), "PWA cache should be refreshed after the important-event completion update");
-assert(worker.includes('"/styles.css?v=41"') && worker.includes('"/app.js?v=41"'), "The PWA shell should cache versioned application assets");
+assert(worker.includes('teacher-operations-v42'), "PWA cache should be refreshed after the completed-event visibility update");
+assert(worker.includes('"/styles.css?v=42"') && worker.includes('"/app.js?v=42"'), "The PWA shell should cache versioned application assets");
 assert(worker.includes("event.respondWith(updateCache.catch"), "Online application assets should load from the network before falling back to cache");
 assert(worker.includes("icon-house.svg") && worker.includes("app-icon-512.png"), "The PWA shell should cache identity and navigation assets");
 assert(worker.includes('LOGIN_PATHS.has(url.pathname)'), "The service worker should leave login documents and assets to the network");

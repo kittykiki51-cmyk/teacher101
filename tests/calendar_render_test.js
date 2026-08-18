@@ -76,7 +76,9 @@ assert(harness.calendarEventCompleted({ status: "已完成" }), "Completed impor
 assert(!harness.calendarEventCompleted({ status: "未完成" }), "Pending important events should remain active");
 const completedEvent = harness.state.workspace.calendar_events[0];
 completedEvent.status = "已完成";
-assert(!harness.calendarEventsOnDate(today).some((event) => event.id === completedEvent.id), "Completed important events should leave the active calendar list");
+assert(harness.calendarEventsOnDate(today).some((event) => event.id === completedEvent.id), "Completed important events should remain visible in the calendar");
+const completedEventPanel = harness.renderCalendarPanelEvent(completedEvent);
+assert(completedEventPanel.includes("已完成") && !completedEventPanel.includes("data-calendar-event-complete"), "Completed important events should show their status instead of another complete action");
 completedEvent.status = "未完成";
 const projectPanelTask = harness.renderCalendarPanelTask(harness.state.workspace.tasks[1]);
 const personalPanelTask = harness.renderCalendarPanelTask(harness.state.workspace.tasks[0]);

@@ -842,17 +842,18 @@ function todayTasks() {
     .sort(sortTasks);
 }
 
-function sortCalendarImportantEvents(a, b) {
-  return `${a.all_day || !a.time ? "0" : "1"} ${a.time || "00:00"} ${a.title || ""}`.localeCompare(`${b.all_day || !b.time ? "0" : "1"} ${b.time || "00:00"} ${b.title || ""}`, "zh-Hant");
-}
-
 function calendarEventCompleted(event) {
   return event?.status === STATUS_COMPLETED;
 }
 
+function sortCalendarImportantEvents(a, b) {
+  return Number(calendarEventCompleted(a)) - Number(calendarEventCompleted(b))
+    || `${a.all_day || !a.time ? "0" : "1"} ${a.time || "00:00"} ${a.title || ""}`.localeCompare(`${b.all_day || !b.time ? "0" : "1"} ${b.time || "00:00"} ${b.title || ""}`, "zh-Hant");
+}
+
 function todayCalendarEvents() {
   return state.workspace.calendar_events
-    .filter((event) => event.date === todayISO() && !calendarEventCompleted(event))
+    .filter((event) => event.date === todayISO())
     .sort(sortCalendarImportantEvents);
 }
 
@@ -1132,7 +1133,9 @@ function renderDashboardImportantEvents(events) {
     <div class="panel-title-row"><div><h3>今日重要行程</h3><p class="muted panel-subtitle">休假、面試、部門會議與公告活動日集中顯示，不會混入工作完成清單。</p></div><button class="ghost-button" data-calendar-event-add="${todayISO()}">新增行程</button></div>
     <div class="dashboard-event-list">${events.map((event) => {
       const project = projectById(event.project_id);
-      return `<button type="button" class="dashboard-event-row" style="${calendarImportantColorStyle(event)}" data-calendar-event-edit="${escapeHTML(event.id)}"><span class="dashboard-event-type">${escapeHTML(calendarImportantType(event))}</span><strong>${escapeHTML(calendarImportantTimeLabel(event))}</strong><span>${escapeHTML(event.title || "未命名行程")}</span>${project ? `<small>${escapeHTML(project.course || "未命名專案")}</small>` : ""}</button>`;
+      const completed = calendarEventCompleted(event);
+      const detail = [completed ? "已完成" : "", project?.course || ""].filter(Boolean).join(" · ");
+      return `<button type="button" class="dashboard-event-row ${completed ? "completed" : ""}" style="${calendarImportantColorStyle(event)}" data-calendar-event-edit="${escapeHTML(event.id)}"><span class="dashboard-event-type">${escapeHTML(calendarImportantType(event))}</span><strong>${escapeHTML(calendarImportantTimeLabel(event))}</strong><span>${escapeHTML(event.title || "未命名行程")}</span>${detail ? `<small class="${completed ? "dashboard-event-status" : ""}">${escapeHTML(detail)}</small>` : ""}</button>`;
     }).join("")}</div>
   </section>`;
 }
@@ -1960,7 +1963,7 @@ function calendarImportantEventMatches(event) {
 
 function calendarEventsOnDate(iso) {
   return state.workspace.calendar_events
-    .filter((event) => event.date === iso && !calendarEventCompleted(event) && calendarImportantEventMatches(event))
+    .filter((event) => event.date === iso && calendarImportantEventMatches(event))
     .sort(sortCalendarImportantEvents);
 }
 
@@ -2024,16 +2027,18 @@ function calendarEvent(task, extraClass = "") {
 
 function renderCalendarImportantEvent(event, extraClass = "") {
   const durationClass = event.time && event.end_time && ["week-event", "agenda-event"].includes(extraClass) ? "duration-event" : "";
-  return `<button type="button" class="calendar-important-event ${extraClass} ${durationClass}" style="${calendarImportantColorStyle(event)}${calendarImportantDurationStyle(event)}" data-calendar-event-edit="${escapeHTML(event.id)}" title="${escapeHTML(`${calendarImportantType(event)}，${calendarImportantTimeLabel(event)}，${event.title || "未命名行程"}`)}"><i>${escapeHTML(calendarImportantType(event))}</i><b>${escapeHTML(calendarImportantTimeLabel(event))}</b><span>${escapeHTML(event.title || "未命名行程")}</span></button>`;
+  const completed = calendarEventCompleted(event);
+  return `<button type="button" class="calendar-important-event ${extraClass} ${durationClass} ${completed ? "completed" : ""}" style="${calendarImportantColorStyle(event)}${calendarImportantDurationStyle(event)}" data-calendar-event-edit="${escapeHTML(event.id)}" title="${escapeHTML(`${completed ? "已完成，" : ""}${calendarImportantType(event)}，${calendarImportantTimeLabel(event)}，${event.title || "未命名行程"}`)}"><i>${escapeHTML(calendarImportantType(event))}</i><b>${escapeHTML(calendarImportantTimeLabel(event))}</b><span>${escapeHTML(event.title || "未命名行程")}</span>${completed ? `<em class="calendar-important-status">已完成</em>` : ""}</button>`;
 }
 
 function renderCalendarPanelEvent(event) {
   const project = projectById(event.project_id);
   const link = validExternalUrl(event.url);
   const locationText = event.location ? ` · ${event.location}` : "";
-  return `<article class="calendar-panel-event" style="${calendarImportantColorStyle(event)}">
+  const completed = calendarEventCompleted(event);
+  return `<article class="calendar-panel-event ${completed ? "completed" : ""}" style="${calendarImportantColorStyle(event)}">
     <button type="button" class="calendar-panel-event-copy" data-calendar-event-edit="${escapeHTML(event.id)}"><span class="calendar-event-type">${escapeHTML(calendarImportantType(event))}</span><span><strong>${escapeHTML(event.title || "未命名行程")}</strong><small>${escapeHTML(`${calendarImportantTimeLabel(event)}${locationText}`)}${event.reminder_minutes !== undefined && event.reminder_minutes !== "" ? ` · ${escapeHTML(reminderLabel(event.reminder_minutes))}` : ""}</small>${event.note ? `<em>${escapeHTML(event.note)}</em>` : ""}</span></button>
-    <div class="calendar-event-actions"><button class="small-button calendar-event-complete" data-calendar-event-complete="${escapeHTML(event.id)}">完成</button>${project ? `<button class="small-button project-jump-button" data-project-open="${escapeHTML(project.id)}">前往專案</button>` : ""}${link ? `<button class="small-button" data-open-url="${escapeHTML(link)}">開啟連結</button>` : ""}<button class="small-button" data-calendar-event-edit="${escapeHTML(event.id)}">編輯</button><button class="calendar-delete-button" data-calendar-event-delete="${escapeHTML(event.id)}">刪除</button></div>
+    <div class="calendar-event-actions">${completed ? pill("已完成", "green") : `<button class="small-button calendar-event-complete" data-calendar-event-complete="${escapeHTML(event.id)}">完成</button>`}${project ? `<button class="small-button project-jump-button" data-project-open="${escapeHTML(project.id)}">前往專案</button>` : ""}${link ? `<button class="small-button" data-open-url="${escapeHTML(link)}">開啟連結</button>` : ""}<button class="small-button" data-calendar-event-edit="${escapeHTML(event.id)}">編輯</button><button class="calendar-delete-button" data-calendar-event-delete="${escapeHTML(event.id)}">刪除</button></div>
   </article>`;
 }
 
