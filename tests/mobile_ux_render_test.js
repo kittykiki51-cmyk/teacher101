@@ -23,7 +23,7 @@ function runProjectActionForTest(action, id) {
   showToast = () => {};
   render = () => {};
   saveWorkspace = () => {};
-  try { action(id); } finally { showToast = originalToast; render = originalRender; saveWorkspace = originalSave; }
+  try { return action(id); } finally { showToast = originalToast; render = originalRender; saveWorkspace = originalSave; }
 }
 return {
   state, todayISO, monthKey, offsetMonthKey, renderDashboard, renderProjects, renderProjectDetail, renderSettings, renderCalendar,
@@ -31,7 +31,7 @@ return {
   projectMilestone, projectFinished, projectGanttSchedule, projectGanttPriority, projectGanttTooltip, taskList,
   normalizedStageValue, projectStageDisplay, STAGE_DEFINITIONS, PROJECT_MESSAGE_TYPES, projectMessageType,
   BILLING_METHODS, lessonDurationSeconds, formatLongDuration, billableHours, projectBillingSummary,
-  LESSON_DELIVERY_STEPS, lessonDeliveryState, lessonDeliverySummary, projectOperationalChecklistGroups,
+  LESSON_DELIVERY_STEPS, lessonDeliveryState, lessonDeliverySummary, lessonDeliveryTask, lessonDeliveryScheduleLabel, projectOperationalChecklistGroups,
   projectTemplateMode, projectTemplateLessonCount, projectTemplateDisplayName, projectTemplateOperationalSections,
   projectTemplateOptions, applyProjectTemplate,
   projectCompletionSummary, archiveYearSelection, notificationSettingsState, validEmailAddress,
@@ -39,6 +39,8 @@ return {
   completeProjectForTest: (id) => runProjectActionForTest(completeProject, id),
   reopenProjectForTest: (id) => runProjectActionForTest(reopenProject, id),
   completeCalendarEventForTest: (id) => runProjectActionForTest(completeCalendarEvent, id),
+  completeTaskForTest: (task) => runProjectActionForTest(() => completeTask(task)),
+  scheduleLessonDeliveryTasksForTest: (id, fields, schedule) => runProjectActionForTest(() => scheduleLessonDeliveryTasks(id, fields, schedule)),
   updateProjectMessageTypeForTest: (id, type) => runProjectActionForTest(() => updateProjectMessageType(id, type), id),
   startProjectMessageReplyForTest: (id) => runProjectActionForTest(startProjectMessageReply, id),
   addProjectMessageForTest: (values) => runProjectActionForTest(() => addProjectMessage({ preventDefault() {}, currentTarget: { values } })),
@@ -265,12 +267,24 @@ assert(workDetail.includes("2 小時 0 分 0 秒") && workDetail.includes("NT$3,
 assert(workDetail.includes('data-duration-add="project-mobile"') && workDetail.includes('data-duration-record="duration-1"'), "The billing panel should allow lessons to be added and individually saved");
 assert(JSON.stringify(harness.LESSON_DELIVERY_STEPS.map((step) => step.label)) === JSON.stringify(["系統課綱建置", "影片壓縮後上傳", "字幕上傳", "講義上傳"]), "Recorded lessons should expose only the four requested delivery steps");
 assert(workDetail.includes('data-duration-field="syllabus_ready"') && workDetail.includes('data-duration-field="handout_uploaded"'), "Every recorded lesson should render direct delivery checkboxes");
+assert(workDetail.includes('data-lesson-schedule="duration-1"') && workDetail.includes("排程未完成項目"), "Every incomplete recorded lesson should provide a calendar scheduling action");
 assert(workDetail.includes("lesson-row-heading") && workDetail.includes("第 1 堂") && workDetail.includes("交付完成"), "Every lesson should show a clear lesson heading and delivery state");
 assert(billingSummary.delivery.completedSteps === 6 && billingSummary.delivery.completedLessons === 1, "Delivery progress should count completed steps and fully delivered lessons");
 assert(workDetail.includes("交付 6/8") && workDetail.includes("1 堂全數完成"), "The billing panel should summarize lesson delivery progress");
 const operationalGroups = harness.projectOperationalChecklistGroups(project);
 assert(operationalGroups.length === 1 && operationalGroups[0].items.length === 1 && operationalGroups[0].items[0].title === "Final review", "Recognized legacy lesson-delivery items should move out of the right operational checklist without deleting custom work");
+const scheduledDeliveryTasks = harness.scheduleLessonDeliveryTasksForTest("duration-1", ["subtitles_uploaded", "handout_uploaded"], { date: today, time: "14:00", end_time: "15:00", reminder_minutes: "10" });
+assert(scheduledDeliveryTasks.length === 2, "Multiple unfinished delivery steps should be schedulable together");
+assert(scheduledDeliveryTasks.every((task) => task.project_id === project.id && task.linked_lesson_record_id === "duration-1" && task.title.includes("第 1 堂")), "Scheduled delivery work should retain its project and lesson link");
+assert(harness.scheduleLessonDeliveryTasksForTest("duration-1", ["subtitles_uploaded", "handout_uploaded"], { date: today, time: "16:00", end_time: "17:00", reminder_minutes: "" }).length === 0, "A delivery step should not create duplicate calendar work");
+assert(harness.lessonDeliveryScheduleLabel(scheduledDeliveryTasks[0]).includes("14:00–15:00"), "Scheduled delivery work should show its date and time on the lesson card");
+assert(harness.renderProjectDetail().includes("已排程：") && harness.renderProjectDetail().includes("14:00–15:00"), "The project should visibly show scheduled delivery timing");
+harness.completeTaskForTest(scheduledDeliveryTasks[0]);
+assert(project.lesson_durations[0].subtitles_uploaded === true, "Completing calendar work should check the linked lesson delivery step");
+harness.toggleLessonDeliveryForTest("duration-1", "subtitles_uploaded", false);
+assert(scheduledDeliveryTasks[0].status === "未完成", "Unchecking a lesson delivery step should restore its linked calendar work to pending");
 harness.toggleLessonDeliveryForTest("duration-1", "subtitles_uploaded", true);
+assert(scheduledDeliveryTasks[0].status === "已完成", "Checking a lesson delivery step should complete its linked calendar work");
 harness.toggleLessonDeliveryForTest("duration-1", "handout_uploaded", true);
 assert(harness.lessonDeliverySummary(project).completedSteps === 8 && harness.lessonDeliverySummary(project).completedLessons === 2, "Delivery checkboxes should save independently and complete a lesson only after all four steps are checked");
 harness.saveProjectBillingSettingsForTest({ mode: "直播", hourly_rate: "1800", billing_method: "half_hour" });
@@ -381,15 +395,15 @@ assert(styles.includes(".task-conflict-warning") && styles.includes("border-left
 const index = read("../index.html");
 assert(index.includes("mobile-button-label"), "Mobile top bar should use a compact add label");
 assert(index.includes('href="app-icon.svg"') && index.includes('href="app-icon-192.png"'), "The app should publish browser and home-screen icons");
-assert(index.includes('styles.css?v=42') && index.includes('app.js?v=42'), "The page should request versioned assets after the completed-event visibility update");
+assert(index.includes('styles.css?v=43') && index.includes('app.js?v=43'), "The page should request versioned assets after the lesson-delivery scheduling update");
 
 const manifest = read("../manifest.json");
 assert(manifest.includes("app-icon-192.png") && manifest.includes("app-icon-512.png") && manifest.includes("maskable"), "The PWA manifest should publish installable app icons");
 
 const worker = read("../service-worker.js");
 new Function(worker);
-assert(worker.includes('teacher-operations-v42'), "PWA cache should be refreshed after the completed-event visibility update");
-assert(worker.includes('"/styles.css?v=42"') && worker.includes('"/app.js?v=42"'), "The PWA shell should cache versioned application assets");
+assert(worker.includes('teacher-operations-v43'), "PWA cache should be refreshed after the lesson-delivery scheduling update");
+assert(worker.includes('"/styles.css?v=43"') && worker.includes('"/app.js?v=43"'), "The PWA shell should cache versioned application assets");
 assert(worker.includes("event.respondWith(updateCache.catch"), "Online application assets should load from the network before falling back to cache");
 assert(worker.includes("icon-house.svg") && worker.includes("app-icon-512.png"), "The PWA shell should cache identity and navigation assets");
 assert(worker.includes('LOGIN_PATHS.has(url.pathname)'), "The service worker should leave login documents and assets to the network");

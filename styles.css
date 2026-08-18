@@ -2002,6 +2002,13 @@ button:disabled {
   margin-bottom: 8px;
 }
 
+.lesson-row-heading-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
 .lesson-row-heading strong {
   color: var(--primary-dark);
   font-size: 13px;
@@ -2019,6 +2026,13 @@ button:disabled {
 .lesson-row-heading span.complete {
   background: var(--green-soft);
   color: var(--green);
+}
+
+.lesson-row-heading .lesson-schedule-button {
+  min-height: 28px;
+  padding: 0 8px;
+  font-size: 10px;
+  white-space: nowrap;
 }
 
 .lesson-duration-fields label > span {
@@ -2083,10 +2097,28 @@ button:disabled {
 }
 
 .lesson-delivery-option span {
+  display: grid;
+  gap: 1px;
   min-width: 0;
   overflow-wrap: anywhere;
   font-size: 11px;
   font-weight: 700;
+}
+
+.lesson-delivery-option span b {
+  color: inherit;
+  font-size: 11px;
+}
+
+.lesson-delivery-option span small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.lesson-delivery-option.scheduled:not(.checked) {
+  border-color: #cbd3fb;
+  background: var(--primary-soft);
 }
 
 .lesson-delivery-option.checked {
@@ -3427,6 +3459,77 @@ button.day-cell:hover {
   gap: 10px;
 }
 
+.lesson-schedule-options {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.lesson-schedule-options legend {
+  margin-bottom: 7px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.lesson-schedule-option {
+  min-width: 0;
+  min-height: 48px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-alt);
+  color: var(--text);
+  padding: 8px 10px;
+}
+
+.lesson-schedule-option > input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--primary);
+}
+
+.lesson-schedule-option > span {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.lesson-schedule-option strong {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+
+.lesson-schedule-option small,
+.lesson-schedule-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.lesson-schedule-option.scheduled {
+  grid-template-columns: minmax(0, 1fr) auto;
+  border-color: #cbd3fb;
+  background: var(--primary-soft);
+}
+
+.lesson-schedule-option.completed {
+  border-color: #c9ddcf;
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.lesson-schedule-option .ghost-button {
+  min-height: 32px;
+  padding: 0 9px;
+  font-size: 11px;
+}
+
 .project-form-section {
   display: grid;
   gap: 10px;
@@ -4493,6 +4596,20 @@ button.day-cell:hover {
     padding: 8px;
   }
 
+  .lesson-row-heading {
+    align-items: flex-start;
+  }
+
+  .lesson-row-heading-actions {
+    max-width: 68%;
+    flex-wrap: wrap;
+  }
+
+  .lesson-row-heading .lesson-schedule-button {
+    min-height: 30px;
+    white-space: normal;
+  }
+
   .lesson-duration-fields {
     grid-template-columns: repeat(4, minmax(0, 1fr));
     min-width: 0;
@@ -4518,6 +4635,14 @@ button.day-cell:hover {
 
   .lesson-delivery-checks {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .lesson-schedule-option.scheduled {
+    grid-template-columns: 1fr;
+  }
+
+  .lesson-schedule-option .ghost-button {
+    width: 100%;
   }
 
   .billing-summary {

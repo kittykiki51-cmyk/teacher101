@@ -768,6 +768,89 @@ function lessonDeliverySummary(project, records = projectLessonDurations(project
   return { totalSteps, completedSteps, completedLessons };
 }
 
+function lessonDeliveryStep(field) {
+  return LESSON_DELIVERY_STEPS.find((step) => step.field === field);
+}
+
+function lessonDeliveryTask(recordId, field) {
+  return state.workspace.tasks.find((task) => task.linked_lesson_record_id === recordId && task.linked_lesson_delivery_field === field);
+}
+
+function lessonDeliveryScheduleLabel(task) {
+  if (!task?.date) return "尚未排程";
+  return `已排程：${humanDate(task.date)} ${task.time ? taskTimeLabel(task) : "全天"}`;
+}
+
+function lessonDeliveryTaskTitle(project, record, field) {
+  const step = lessonDeliveryStep(field);
+  return `${project?.course || "未命名課程"}｜第 ${Math.max(1, Number(record?.lesson_number) || 1)} 堂｜${step?.label || "影音交付"}`;
+}
+
+function lessonDeliveryLink(task) {
+  if (!task?.linked_lesson_record_id || !task?.linked_lesson_delivery_field) return null;
+  const project = projectById(task.project_id);
+  const record = project?.lesson_durations?.find((item) => item.id === task.linked_lesson_record_id);
+  const step = lessonDeliveryStep(task.linked_lesson_delivery_field);
+  return project && record && step ? { project, record, step } : null;
+}
+
+function syncLessonDeliveryFromTask(task, done = task?.status === STATUS_COMPLETED) {
+  const linked = lessonDeliveryLink(task);
+  if (!linked) return false;
+  const now = new Date().toISOString();
+  linked.record[linked.step.field] = Boolean(done);
+  linked.record.updated_at = now;
+  linked.project.updated_at = now;
+  return true;
+}
+
+function syncLessonDeliveryTask(project, record, field, done) {
+  const task = lessonDeliveryTask(record.id, field);
+  if (!task) return null;
+  const now = new Date().toISOString();
+  task.status = done ? STATUS_COMPLETED : "未完成";
+  task.completed_at = done ? now.slice(0, 19) : "";
+  task.updated_at = now;
+  task.title = lessonDeliveryTaskTitle(project, record, field);
+  return task;
+}
+
+function scheduleLessonDeliveryTasks(recordId, fields, schedule) {
+  const project = projectById(state.selectedProjectId);
+  const record = project?.lesson_durations?.find((item) => item.id === recordId);
+  if (!project || !record) return [];
+  const delivery = lessonDeliveryState(project, record);
+  const requestedFields = new Set(Array.isArray(fields) ? fields : []);
+  const now = new Date().toISOString();
+  const created = [];
+  LESSON_DELIVERY_STEPS.forEach(({ field }) => {
+    if (!requestedFields.has(field) || delivery[field] || lessonDeliveryTask(record.id, field)) return;
+    const id = uid("task");
+    const task = {
+      id,
+      project_id: project.id,
+      title: lessonDeliveryTaskTitle(project, record, field),
+      date: String(schedule?.date || todayISO()),
+      time: String(schedule?.time || ""),
+      end_time: String(schedule?.end_time || ""),
+      status: "未完成",
+      task_type: "一般工作",
+      reminder_minutes: String(schedule?.reminder_minutes || ""),
+      recurrence: "none",
+      recurrence_series_id: id,
+      note: "影音交付檢核排程",
+      linked_lesson_record_id: record.id,
+      linked_lesson_delivery_field: field,
+      created_at: now.slice(0, 19),
+      updated_at: now,
+    };
+    state.workspace.tasks.push(task);
+    created.push(task);
+  });
+  if (created.length) project.updated_at = now;
+  return created;
+}
+
 function projectOperationalChecklistGroups(project) {
   const lessonNumbers = new Set(projectLessonDurations(project).map((record) => Number(record.lesson_number) || 0));
   if (project?.mode === "live" || !lessonNumbers.size) return checklistGroups(project?.id);
@@ -1707,7 +1790,7 @@ function renderLessonDurationRow(record, project) {
   return `<form class="lesson-duration-row ${deliveryComplete ? "delivery-complete" : ""}" data-duration-record="${escapeHTML(record.id)}">
     <div class="lesson-row-heading">
       <strong>第 ${lessonNumber} 堂</strong>
-      <span class="${deliveryComplete ? "complete" : ""}" data-lesson-delivery-label>${deliveryComplete ? "交付完成" : `${completedSteps}/4 項完成`}</span>
+      <div class="lesson-row-heading-actions"><span class="${deliveryComplete ? "complete" : ""}" data-lesson-delivery-label>${deliveryComplete ? "交付完成" : `${completedSteps}/4 項完成`}</span><button type="button" class="ghost-button lesson-schedule-button" data-lesson-schedule="${escapeHTML(record.id)}" ${deliveryComplete ? "hidden" : ""}>排程未完成項目</button></div>
     </div>
     <div class="lesson-duration-fields">
       <label><span>堂數</span><input class="input" type="number" name="lesson_number" min="1" max="999" step="1" inputmode="numeric" value="${lessonNumber}" required></label>
@@ -1718,7 +1801,10 @@ function renderLessonDurationRow(record, project) {
       <div class="lesson-duration-actions"><button class="primary-button" type="submit">儲存</button><button class="danger-button" type="button" data-duration-delete="${escapeHTML(record.id)}">刪除</button></div>
     </div>
     <fieldset class="lesson-delivery-checks"><legend>第 ${lessonNumber} 堂交付進度</legend>
-      ${LESSON_DELIVERY_STEPS.map(({ field, label }) => `<label class="lesson-delivery-option ${delivery[field] ? "checked" : ""}"><input type="checkbox" data-duration-delivery="${escapeHTML(record.id)}" data-duration-field="${field}" ${delivery[field] ? "checked" : ""}><span>${label}</span></label>`).join("")}
+      ${LESSON_DELIVERY_STEPS.map(({ field, label }) => {
+        const task = lessonDeliveryTask(record.id, field);
+        return `<label class="lesson-delivery-option ${delivery[field] ? "checked" : ""} ${task ? "scheduled" : ""}"><input type="checkbox" data-duration-delivery="${escapeHTML(record.id)}" data-duration-field="${field}" ${delivery[field] ? "checked" : ""}><span><b>${label}</b>${task ? `<small>${escapeHTML(lessonDeliveryScheduleLabel(task))}</small>` : ""}</span></label>`;
+      }).join("")}
     </fieldset>
   </form>`;
 }
@@ -2520,6 +2606,7 @@ function bindContentEvents() {
   document.querySelectorAll("[data-duration-add]").forEach((button) => button.addEventListener("click", () => addLessonDurationRecord(button.dataset.durationAdd)));
   document.querySelectorAll("[data-duration-delete]").forEach((button) => button.addEventListener("click", () => deleteLessonDurationRecord(button.dataset.durationDelete)));
   document.querySelectorAll("[data-duration-delivery]").forEach((input) => input.addEventListener("change", () => toggleLessonDelivery(input.dataset.durationDelivery, input.dataset.durationField, input.checked, input)));
+  document.querySelectorAll("[data-lesson-schedule]").forEach((button) => button.addEventListener("click", () => openLessonDeliveryScheduleDialog(button.dataset.lessonSchedule)));
   const goalSettingsForm = $("#goalSettingsForm");
   if (goalSettingsForm) goalSettingsForm.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -2559,10 +2646,17 @@ function bindContentEvents() {
       const task = state.workspace.tasks.find((item) => item.id === button.dataset.complete);
       if (!task) return;
       const tasksBeforeCompletion = state.workspace.tasks.map((item) => ({ ...item }));
+      const linkedBeforeCompletion = lessonDeliveryLink(task);
+      const deliveryValueBeforeCompletion = linkedBeforeCompletion ? Boolean(linkedBeforeCompletion.record[linkedBeforeCompletion.step.field]) : null;
       completeTask(task);
       saveWorkspace();
       showToast("已標記完成", () => {
         state.workspace.tasks = tasksBeforeCompletion;
+        if (linkedBeforeCompletion) {
+          linkedBeforeCompletion.record[linkedBeforeCompletion.step.field] = deliveryValueBeforeCompletion;
+          linkedBeforeCompletion.record.updated_at = new Date().toISOString();
+          linkedBeforeCompletion.project.updated_at = linkedBeforeCompletion.record.updated_at;
+        }
         saveWorkspace();
         render();
         showToast("已復原完成狀態");
@@ -3350,15 +3444,83 @@ function completeCalendarEvent(eventId) {
   render();
 }
 
+function openLessonDeliveryScheduleDialog(recordId) {
+  const project = projectById(state.selectedProjectId);
+  const record = project?.lesson_durations?.find((item) => item.id === recordId);
+  if (!project || !record) return;
+  const delivery = lessonDeliveryState(project, record);
+  const unscheduled = LESSON_DELIVERY_STEPS.filter(({ field }) => !delivery[field] && !lessonDeliveryTask(record.id, field));
+  const lessonNumber = Math.max(1, Number(record.lesson_number) || 1);
+  const layer = $("#modalLayer");
+  layer.hidden = false;
+  layer.innerHTML = `<div class="modal-card compact-modal lesson-schedule-modal" role="dialog" aria-modal="true" aria-labelledby="lessonScheduleTitle">
+    <div class="modal-header"><div><h3 id="lessonScheduleTitle">安排第 ${lessonNumber} 堂檢核</h3><p class="muted">排入工作月曆，完成後會同步勾選原項目。</p></div><button class="icon-button" data-close-modal aria-label="關閉">×</button></div>
+    <form class="form-grid" id="lessonScheduleForm" autocomplete="off">
+      <fieldset class="lesson-schedule-options"><legend>選擇檢核項目</legend>
+        ${LESSON_DELIVERY_STEPS.map(({ field, label }) => {
+          const task = lessonDeliveryTask(record.id, field);
+          if (delivery[field]) return `<div class="lesson-schedule-option completed"><span><strong>${escapeHTML(label)}</strong><small>已完成</small></span></div>`;
+          if (task) return `<div class="lesson-schedule-option scheduled"><span><strong>${escapeHTML(label)}</strong><small>${escapeHTML(lessonDeliveryScheduleLabel(task))}</small></span><button type="button" class="ghost-button" data-edit-lesson-task="${escapeHTML(task.id)}">編輯排程</button></div>`;
+          return `<label class="lesson-schedule-option"><input type="checkbox" name="delivery_field" value="${field}"><span><strong>${escapeHTML(label)}</strong><small>尚未排程</small></span></label>`;
+        }).join("")}
+      </fieldset>
+      ${unscheduled.length ? `<p class="lesson-schedule-hint">勾選多項時，會安排在同一時段；之後可個別編輯。</p>
+      <label><span>日期</span><input class="search-input" type="date" name="date" value="${todayISO()}" required></label>
+      <div class="two-col"><label><span>開始時間</span><input class="search-input" type="time" name="time" value="09:00" required></label><label><span>結束時間</span><input class="search-input" type="time" name="end_time" value="10:00" required></label></div>
+      <label><span>提醒</span><select class="select" name="reminder_minutes">${[["", "不提醒"], ["0", "準時提醒"], ["10", "提前 10 分鐘"], ["60", "提前 1 小時"], ["1440", "提前 1 天"]].map(([value, label]) => `<option value="${value}" ${value === "10" ? "selected" : ""}>${label}</option>`).join("")}</select></label>` : `<p class="empty-state">這一堂的未完成項目都已排程，可使用上方按鈕個別調整。</p>`}
+      <input type="hidden" name="lesson_record_id" value="${escapeHTML(record.id)}">
+      <div class="modal-actions"><div class="toolbar"><button type="button" class="ghost-button" data-close-modal>取消</button>${unscheduled.length ? `<button class="primary-button">加入工作月曆</button>` : `<button type="button" class="primary-button" data-close-modal>完成</button>`}</div></div>
+    </form>
+  </div>`;
+  layer.querySelectorAll("[data-close-modal]").forEach((button) => button.addEventListener("click", closeModal));
+  layer.querySelectorAll("[data-edit-lesson-task]").forEach((button) => button.addEventListener("click", () => {
+    const task = state.workspace.tasks.find((item) => item.id === button.dataset.editLessonTask);
+    if (!task) return;
+    closeModal();
+    openTaskDialog(task);
+  }));
+  $("#lessonScheduleForm").addEventListener("submit", saveLessonDeliverySchedule);
+  setupModalViewport(layer);
+}
+
+function saveLessonDeliverySchedule(event) {
+  event.preventDefault();
+  const form = new FormData(event.currentTarget);
+  const fields = form.getAll("delivery_field").map(String);
+  if (!fields.length) {
+    showToast("請先選擇要排程的檢核項目");
+    return;
+  }
+  const time = String(form.get("time") || "");
+  const endTime = String(form.get("end_time") || "");
+  if (!time || !endTime || timeToMinutes(endTime) <= timeToMinutes(time)) {
+    showToast("結束時間必須晚於開始時間");
+    return;
+  }
+  const created = scheduleLessonDeliveryTasks(String(form.get("lesson_record_id") || ""), fields, {
+    date: String(form.get("date") || todayISO()),
+    time,
+    end_time: endTime,
+    reminder_minutes: String(form.get("reminder_minutes") || ""),
+  });
+  if (!created.length) {
+    showToast("選擇的項目已完成或已排程");
+    return;
+  }
+  addHistory(`新增 ${created.length} 項影音交付檢核排程`, created[0].project_id, "task");
+  saveWorkspace(); closeModal(); showToast(`已將 ${created.length} 項檢核加入工作月曆`); render();
+}
+
 function openTaskDialog(task = null, projectId = "") {
   const layer = $("#modalLayer");
   const targetProjectId = projectId || task?.project_id || (state.page === "projectDetail" ? state.selectedProjectId : "");
   const isPhoneTask = task?.task_type === TASK_TYPE_PHONE;
+  const isLessonDeliveryTask = Boolean(task?.linked_lesson_record_id && task?.linked_lesson_delivery_field);
   layer.hidden = false;
   layer.innerHTML = `<div class="modal-card compact-modal" role="dialog" aria-modal="true">
     <div class="modal-header"><h3>${task?.id ? (isPhoneTask ? "編輯電話聯繫" : "編輯工作") : (isPhoneTask ? "新增電話聯繫" : "新增工作排程")}</h3><button class="icon-button" data-close-modal aria-label="關閉">×</button></div>
     <form class="form-grid" id="taskForm" autocomplete="off">
-      <label><span>工作內容</span><input class="search-input" name="title" required value="${escapeHTML(task?.title || "")}"></label>
+      <label><span>工作內容</span><input class="search-input" name="title" required value="${escapeHTML(task?.title || "")}" ${isLessonDeliveryTask ? "readonly" : ""}></label>
       <label><span>日期</span><input class="search-input" type="date" name="date" value="${escapeHTML(task?.date || todayISO())}" required></label>
       <div class="two-col"><label><span>開始時間</span><input class="search-input" type="time" name="time" value="${escapeHTML(task?.time || "")}"></label><label><span>結束時間</span><input class="search-input" type="time" name="end_time" value="${escapeHTML(task?.end_time || "")}"></label></div>
       <div class="task-conflict-warning" id="taskConflictWarning" role="alert" aria-live="polite" hidden></div>
@@ -3366,10 +3528,10 @@ function openTaskDialog(task = null, projectId = "") {
         <label><span>狀態</span><select class="select" name="status">${["未完成", "等待中", "已完成"].map((value) => `<option ${String(task?.status || "未完成") === value ? "selected" : ""}>${value}</option>`).join("")}</select></label>
         <label><span>提醒</span><select class="select" name="reminder_minutes">${[["", "不提醒"], ["0", "準時提醒"], ["10", "提前 10 分鐘"], ["60", "提前 1 小時"], ["1440", "提前 1 天"]].map(([value, label]) => `<option value="${value}" ${String(task?.reminder_minutes ?? "") === value ? "selected" : ""}>${label}</option>`).join("")}</select></label>
       </div>
-      <label><span>重複</span><select class="select" name="recurrence">${[["none", "不重複"], ["daily", "每天"], ["weekly", "每週"], ["monthly", "每月"]].map(([value, label]) => `<option value="${value}" ${String(task?.recurrence || "none") === value ? "selected" : ""}>${label}</option>`).join("")}</select></label>
+      <label><span>重複</span><select class="select" name="recurrence" ${isLessonDeliveryTask ? "disabled" : ""}>${[["none", "不重複"], ["daily", "每天"], ["weekly", "每週"], ["monthly", "每月"]].map(([value, label]) => `<option value="${value}" ${String(task?.recurrence || "none") === value ? "selected" : ""}>${label}</option>`).join("")}</select></label>
       <label><span>所屬課程（選填）</span><select class="select" name="project_id"><option value="">我的工作</option>${state.workspace.projects.filter((project) => !projectFinished(project)).map((project) => `<option value="${escapeHTML(project.id)}" ${targetProjectId === project.id ? "selected" : ""}>${escapeHTML(project.course || project.teacher || "未命名專案")}</option>`).join("")}</select></label>
       <label><span>備註（選填）</span><textarea class="textarea" name="note" rows="3" placeholder="補充資訊、網址或處理方式">${escapeHTML(task?.note || "")}</textarea></label>
-      <input type="hidden" name="task_id" value="${escapeHTML(task?.id || "")}"><input type="hidden" name="check_item_id" value="${escapeHTML(task?.linked_checklist_item_id || "")}"><input type="hidden" name="task_type" value="${escapeHTML(task?.task_type || "一般工作")}">
+      <input type="hidden" name="task_id" value="${escapeHTML(task?.id || "")}"><input type="hidden" name="check_item_id" value="${escapeHTML(task?.linked_checklist_item_id || "")}"><input type="hidden" name="lesson_record_id" value="${escapeHTML(task?.linked_lesson_record_id || "")}"><input type="hidden" name="lesson_delivery_field" value="${escapeHTML(task?.linked_lesson_delivery_field || "")}"><input type="hidden" name="task_type" value="${escapeHTML(task?.task_type || "一般工作")}">
       <div class="modal-actions split-actions">${task?.id ? `<button type="button" class="danger-button" data-task-delete="${escapeHTML(task.id)}">刪除工作</button>` : `<span></span>`}<div class="toolbar"><button type="button" class="ghost-button" data-close-modal>取消</button><button class="primary-button">儲存工作</button></div></div>
     </form></div>`;
   layer.querySelectorAll("[data-close-modal]").forEach((button) => button.addEventListener("click", closeModal));
@@ -3405,9 +3567,14 @@ function saveTaskFromForm(event) {
   if (conflicts.length && !confirm(`這個時段與 ${conflicts.length} 項工作重疊，仍要儲存嗎？`)) return;
   const task = state.workspace.tasks.find((item) => item.id === taskId) || { id: uid("task"), project_id: String(form.get("project_id") || ""), created_at: new Date().toISOString().slice(0, 19), task_type: taskType, phone_status: taskType === TASK_TYPE_PHONE ? "待聯繫" : "" };
   const wasCompleted = task.status === STATUS_COMPLETED;
-  Object.assign(task, { title: String(form.get("title") || "").trim(), date: String(form.get("date") || ""), time: startTime, end_time: endTime, status: String(form.get("status") || "未完成"), project_id: String(form.get("project_id") || ""), task_type: taskType, reminder_minutes: String(form.get("reminder_minutes") || ""), recurrence: String(form.get("recurrence") || "none"), recurrence_series_id: task.recurrence_series_id || task.id, note: String(form.get("note") || "").trim(), linked_checklist_item_id: String(form.get("check_item_id") || task.linked_checklist_item_id || ""), updated_at: new Date().toISOString() });
+  Object.assign(task, { title: String(form.get("title") || "").trim(), date: String(form.get("date") || ""), time: startTime, end_time: endTime, status: String(form.get("status") || "未完成"), project_id: String(form.get("project_id") || ""), task_type: taskType, reminder_minutes: String(form.get("reminder_minutes") || ""), recurrence: String(form.get("recurrence") || "none"), recurrence_series_id: task.recurrence_series_id || task.id, note: String(form.get("note") || "").trim(), linked_checklist_item_id: String(form.get("check_item_id") || task.linked_checklist_item_id || ""), linked_lesson_record_id: String(form.get("lesson_record_id") || task.linked_lesson_record_id || ""), linked_lesson_delivery_field: String(form.get("lesson_delivery_field") || task.linked_lesson_delivery_field || ""), updated_at: new Date().toISOString() });
   if (!taskId) state.workspace.tasks.push(task);
   if (!wasCompleted && task.status === STATUS_COMPLETED) completeTask(task);
+  if (task.linked_lesson_record_id && task.linked_lesson_delivery_field) {
+    const linked = lessonDeliveryLink(task);
+    if (linked) task.title = lessonDeliveryTaskTitle(linked.project, linked.record, linked.step.field);
+    syncLessonDeliveryFromTask(task, task.status === STATUS_COMPLETED);
+  }
   if (task.linked_checklist_item_id) {
     state.workspace.checklists.forEach((group) => (group.items || []).forEach((item) => { if (item.id === task.linked_checklist_item_id) item.linked_task_id = task.id; }));
   }
@@ -3435,6 +3602,7 @@ function completeTask(task) {
   task.completed_at = new Date().toISOString().slice(0, 19);
   task.updated_at = new Date().toISOString();
   if (task.task_type === TASK_TYPE_PHONE) task.phone_status = "已聯繫";
+  syncLessonDeliveryFromTask(task, true);
   const nextDate = recurrenceDate(task);
   if (!nextDate) return;
   const seriesId = task.recurrence_series_id || task.id;
@@ -3629,6 +3797,10 @@ function saveLessonDurationRecord(event) {
   if (previousLessonNumber && previousLessonNumber !== lessonNumber) dismissedNumbers.add(previousLessonNumber);
   project.dismissed_lesson_delivery_numbers = [...dismissedNumbers].sort((left, right) => left - right);
   Object.assign(record, { lesson_number: lessonNumber, hours, minutes, seconds, note: String(form.get("note") || "").trim(), updated_at: new Date().toISOString() });
+  LESSON_DELIVERY_STEPS.forEach(({ field }) => {
+    const task = lessonDeliveryTask(record.id, field);
+    if (task) task.title = lessonDeliveryTaskTitle(project, record, field);
+  });
   project.updated_at = record.updated_at;
   saveWorkspace(); showToast(`第 ${lessonNumber} 堂時長已儲存`); render();
 }
@@ -3640,6 +3812,12 @@ function deleteLessonDurationRecord(recordId) {
   const dismissedNumbers = new Set((Array.isArray(project.dismissed_lesson_delivery_numbers) ? project.dismissed_lesson_delivery_numbers : []).map(Number));
   if (Number(record.lesson_number) > 0) dismissedNumbers.add(Number(record.lesson_number));
   project.dismissed_lesson_delivery_numbers = [...dismissedNumbers].sort((left, right) => left - right);
+  state.workspace.tasks.forEach((task) => {
+    if (task.linked_lesson_record_id !== recordId) return;
+    task.linked_lesson_record_id = "";
+    task.linked_lesson_delivery_field = "";
+    task.updated_at = new Date().toISOString();
+  });
   project.lesson_durations = project.lesson_durations.filter((item) => item.id !== recordId);
   project.updated_at = new Date().toISOString();
   saveWorkspace(); showToast("已刪除堂數紀錄"); render();
@@ -3653,6 +3831,7 @@ function toggleLessonDelivery(recordId, field, done, input = null) {
   record[field] = Boolean(done);
   record.updated_at = now;
   project.updated_at = now;
+  syncLessonDeliveryTask(project, record, field, Boolean(done));
   saveWorkspace();
 
   const delivery = lessonDeliveryState(project, record);
@@ -3666,6 +3845,8 @@ function toggleLessonDelivery(recordId, field, done, input = null) {
     rowLabel.textContent = deliveryComplete ? "交付完成" : `${completedSteps}/4 項完成`;
     rowLabel.classList.toggle("complete", deliveryComplete);
   }
+  const scheduleButton = row?.querySelector("[data-lesson-schedule]");
+  if (scheduleButton) scheduleButton.hidden = deliveryComplete;
   const summary = projectBillingSummary(project);
   const progress = typeof document === "undefined" ? null : document.querySelector("[data-delivery-progress]");
   const completed = typeof document === "undefined" ? null : document.querySelector("[data-delivery-summary]");
